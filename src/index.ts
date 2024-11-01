@@ -361,7 +361,6 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
 
   try {
     const cachedMessage = await cacheMessage(message);
