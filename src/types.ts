@@ -30,4 +30,30 @@ export interface AIMessage {
   role: "user" | "assistant" | "system";
   name?: string;
   content: string;
+}
+
+/**
+ * Represents available text generation models in order of preference
+ */
+export type TextModel = 
+  | "llama-3.2-90b-text-preview"
+  | "llama-3.1-70b-versatile"
+  | "llama-3.1-8b-instant";
+
+/**
+ * Represents available vision models in order of preference
+ */
+export type VisionModel = 
+  | "llama-3.2-11b-vision-preview"
+  | "llama-3.2-90b-vision-preview"
+  | "llava-v1.5-7b-4096-preview";
+
+/**
+ * Configuration for model fallback behavior
+ */
+export interface ModelConfig {
+  textModels: TextModel[];
+  visionModels: VisionModel[];
+  currentTextModel: TextModel;
+  currentVisionModel: VisionModel;
 } 
