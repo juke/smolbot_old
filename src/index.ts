@@ -19,7 +19,8 @@ import {
   MessageQueue, 
   QueuedMessage, 
   TextModel, 
-  VisionModel 
+  VisionModel,
+  CachedEmoji
 } from "./types.js";
 
 // Initialize dotenv
