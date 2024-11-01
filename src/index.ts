@@ -2,7 +2,7 @@
 
 import { config } from 'dotenv';
 import { Groq } from "groq-sdk";
-import { Client, GatewayIntentBits, TextChannel, Message, Collection } from "discord.js";
+import { Client, GatewayIntentBits, TextChannel, Message, Collection, GuildEmoji } from "discord.js";
 import pino from "pino";
 import { CachedMessage, AIMessage, ModelConfig, TextModel, VisionModel } from "./types";
 
@@ -56,8 +56,110 @@ const MODEL_CONFIG: ModelConfig = {
     "llava-v1.5-7b-4096-preview"
   ],
   currentTextModel: "llama-3.2-90b-text-preview",
-  currentVisionModel: "llama-3.2-11b-vision-preview"
+  currentVisionModel: "llama-3.2-11b-vision-preview",
+  emojiCache: new Map()
 };
+
+/**
+ * Caches all emojis from a guild
+ */
+function cacheGuildEmojis(guildId: string, emojis: Collection<string, GuildEmoji>) {
+  for (const [id, emoji] of emojis) {
+    if (!emoji.name) continue; // Skip if emoji name is null
+    
+    // Cache with original name
+    MODEL_CONFIG.emojiCache.set(emoji.name.toLowerCase(), {
+      id: emoji.id,
+      name: emoji.name,
+      animated: emoji.animated ?? false,
+      guildId
+    });
+    
+    // Cache clean name version (alphanumeric only)
+    const cleanName = emoji.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    if (cleanName !== emoji.name.toLowerCase()) {
+      MODEL_CONFIG.emojiCache.set(cleanName, {
+        id: emoji.id,
+        name: emoji.name,
+        animated: emoji.animated ?? false,
+        guildId
+      });
+    }
+
+    // Also cache without special characters for better matching
+    const noSpecialName = emoji.name.replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+    if (noSpecialName !== emoji.name.toLowerCase() && noSpecialName !== cleanName) {
+      MODEL_CONFIG.emojiCache.set(noSpecialName, {
+        id: emoji.id,
+        name: emoji.name,
+        animated: emoji.animated ?? false,
+        guildId
+      });
+    }
+  }
+  
+  logger.debug({ 
+    guildId, 
+    emojiCount: emojis.size,
+    cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.keys())
+  }, "Cached guild emojis");
+}
+
+/**
+ * Formats an emoji string correctly for Discord
+ */
+function formatEmoji(emojiName: string): string {
+  // Remove any colons from the input
+  const cleanName = emojiName.replace(/:/g, "").trim();
+  
+  // First check if it's already a properly formatted Discord emoji
+  const discordEmojiPattern = /^<a?:[\w-]+:\d+>$/;
+  if (discordEmojiPattern.test(emojiName)) {
+    return emojiName;
+  }
+  
+  const emoji = MODEL_CONFIG.emojiCache.get(cleanName.toLowerCase());
+  if (!emoji) {
+    // Try to find emoji by clean name (alphanumeric only)
+    const cleanSearchName = cleanName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    const cleanEmoji = MODEL_CONFIG.emojiCache.get(cleanSearchName);
+    if (cleanEmoji) {
+      return cleanEmoji.animated 
+        ? `<a:${cleanEmoji.name}:${cleanEmoji.id}>`
+        : `<:${cleanEmoji.name}:${cleanEmoji.id}>`;
+    }
+    return `:${cleanName}:`; // Return original format if not found
+  }
+  
+  return emoji.animated 
+    ? `<a:${emoji.name}:${emoji.id}>`
+    : `<:${emoji.name}:${emoji.id}>`;
+}
+
+/**
+ * Processes text to properly format any emoji references
+ */
+function processEmojiText(text: string): string {
+  // Handle already formatted Discord emojis
+  const discordEmojiPattern = /(<a?:[\w-]+:\d+>)/g;
+  
+  // First preserve any properly formatted Discord emojis
+  const preservedEmojis: string[] = [];
+  const preservedText = text.replace(discordEmojiPattern, (match) => {
+    preservedEmojis.push(match);
+    return `__EMOJI${preservedEmojis.length - 1}__`;
+  });
+  
+  // Then handle :emoji_name: patterns - updated regex to handle more characters
+  const processedText = preservedText.replace(/:([a-zA-Z0-9_-]+):/g, (match, emojiName) => {
+    return formatEmoji(emojiName);
+  });
+  
+  // Finally restore preserved emojis
+  return processedText.replace(/__EMOJI(\d+)__/g, (_, index) => {
+    return preservedEmojis[parseInt(index)];
+  });
+}
 
 /**
  * Handles model fallback when rate limits are encountered
@@ -247,33 +349,51 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
         msg.content.includes("[Referenced Image Description:")
       );
 
+      // Add this helper function to get formatted emoji list
+      function getAvailableEmojis(): string {
+        const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
+          .map(emoji => `:${emoji.name}:`)
+          .join(", ");
+        return emojiList || "No custom emojis available";
+      }
+
       const completion = await groq.chat.completions.create({
         messages: [
           {
             role: "system",
             content: `You are SmolBot, a helpful Discord assistant. You are currently talking to ${currentUsername}. 
-              Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response.${
-              hasImages 
+              Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response.
+              
+              Available server emojis (use them by wrapping the name in colons):
+              ${getAvailableEmojis()}
+              
+              Example emoji usage: 
+              - Single emoji: :emoji_name:
+              - Multiple emojis: hello :emoji1: how are you :emoji2:
+              
+              ${hasImages 
                 ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
                 : "Respond to the user's questions directly."
-            } 
-            The messages you receive will be formatted as [Username]: Message Content.
-            Just respond naturally like you're a chatter in the Discord server. Keep your responses concise and to the point.
-            Use lowercase for your responses and be casual. Don't include any other text in your responses, just your message to the user.
-            Here's how messages look in our chat (NOTE: these tags are just to help you understand - never include them in your responses):
-            
-            [User123]: hello!
-            [Image Description: a cat sleeping]
-            
-            [smolbotai]: aww what a sleepy kitty
-            [Referenced Message from User123: hello!]
-            [Referenced Image Description: a cat sleeping]
-            
-            IMPORTANT: Only respond with your message text - no tags or formatting.
-            Example good response: "aww what a sleepy kitty"
-            Example bad response: "[smolbotai]: aww what a sleepy kitty [Referenced Message from User123: hello!] [Referenced Image Description: a cat sleeping]"
-            When you see <@1234567890> in a message, it's a "mention" of a different user, or even you.
-            `
+              } 
+              The messages you receive will be formatted as [Username]: Message Content.
+              Just respond naturally like you're a chatter in the Discord server. Keep your responses concise and to the point.
+              Use lowercase for your responses and be casual. Don't include any other text in your responses, just your message to the user.
+              Feel free to use emojis naturally in your responses when appropriate.
+              
+              Here's how messages look in our chat (NOTE: these tags are just to help you understand - never include them in your responses):
+              
+              [User123]: hello!
+              [Image Description: a cat sleeping]
+              
+              [smolbotai]: aww what a sleepy kitty :sleepcat:
+              [Referenced Message from User123: hello!]
+              [Referenced Image Description: a cat sleeping]
+              
+              IMPORTANT: Only respond with your message text - no tags or formatting.
+              Example good response: "aww what a sleepy kitty :sleepcat:"
+              Example bad response: "[smolbotai]: aww what a sleepy kitty :sleepcat: [Referenced Message from User123: hello!]"
+              When you see <@1234567890> in a message, it's a "mention" of a different user, or even you.
+              `
           },
           ...contextMessages,
           {
@@ -514,6 +634,11 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
 
 client.on('ready', () => {
   logger.info(`Logged in as ${client.user?.tag}!`);
+  
+  // Cache emojis from all guilds
+  client.guilds.cache.forEach(guild => {
+    cacheGuildEmojis(guild.id, guild.emojis.cache);
+  });
 });
 
 client.on('messageCreate', async (message) => {
@@ -572,7 +697,7 @@ client.on('messageCreate', async (message) => {
       
       // Use reply instead of send
       await message.reply({
-        content: responseText,
+        content: processEmojiText(responseText),
         failIfNotExists: false  // Prevents errors if the original message was deleted
       });
     }
@@ -592,6 +717,65 @@ client.on('messageCreate', async (message) => {
     } catch (sendError) {
       logger.error({ sendError }, "Failed to send error message to user");
     }
+  }
+});
+
+// Add guild emoji update handlers
+client.on('emojiCreate', (emoji) => {
+  if (!emoji.name) return;
+  
+  MODEL_CONFIG.emojiCache.set(emoji.name.toLowerCase(), {
+    id: emoji.id,
+    name: emoji.name,
+    animated: emoji.animated ?? false,
+    guildId: emoji.guild.id
+  });
+  
+  // Cache clean name version too
+  const cleanName = emoji.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  if (cleanName !== emoji.name.toLowerCase()) {
+    MODEL_CONFIG.emojiCache.set(cleanName, {
+      id: emoji.id,
+      name: emoji.name,
+      animated: emoji.animated ?? false,
+      guildId: emoji.guild.id
+    });
+  }
+});
+
+client.on('emojiDelete', (emoji) => {
+  if (!emoji.name) return;
+  
+  MODEL_CONFIG.emojiCache.delete(emoji.name.toLowerCase());
+  // Also remove clean name version
+  const cleanName = emoji.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  MODEL_CONFIG.emojiCache.delete(cleanName);
+});
+
+client.on('emojiUpdate', (oldEmoji, newEmoji) => {
+  if (!oldEmoji.name || !newEmoji.name) return;
+  
+  // Remove old versions
+  MODEL_CONFIG.emojiCache.delete(oldEmoji.name.toLowerCase());
+  const oldCleanName = oldEmoji.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  MODEL_CONFIG.emojiCache.delete(oldCleanName);
+  
+  // Add new versions
+  MODEL_CONFIG.emojiCache.set(newEmoji.name.toLowerCase(), {
+    id: newEmoji.id,
+    name: newEmoji.name,
+    animated: newEmoji.animated ?? false,
+    guildId: newEmoji.guild.id
+  });
+  
+  const newCleanName = newEmoji.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  if (newCleanName !== newEmoji.name.toLowerCase()) {
+    MODEL_CONFIG.emojiCache.set(newCleanName, {
+      id: newEmoji.id,
+      name: newEmoji.name,
+      animated: newEmoji.animated ?? false,
+      guildId: newEmoji.guild.id
+    });
   }
 });
 

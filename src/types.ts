@@ -49,6 +49,16 @@ export type VisionModel =
   | "llava-v1.5-7b-4096-preview";
 
 /**
+ * Represents a cached Discord emoji
+ */
+export interface CachedEmoji {
+  id: string;
+  name: string;
+  animated: boolean;
+  guildId: string;
+}
+
+/**
  * Configuration for model fallback behavior
  */
 export interface ModelConfig {
@@ -56,4 +66,5 @@ export interface ModelConfig {
   visionModels: VisionModel[];
   currentTextModel: TextModel;
   currentVisionModel: VisionModel;
+  emojiCache: Map<string, CachedEmoji>;
 } 
