@@ -128,42 +128,51 @@ async function groqDetailedAnalysis(imageUrl: string): Promise<string> {
 /**
  * Generates a response using the vision model when images are present
  */
-async function generateResponse(contextMessages: AIMessage[]): Promise<string> {
+async function generateResponse(contextMessages: AIMessage[], currentUsername: string): Promise<string> {
   try {
-    // Check if any of the messages contain image descriptions
     const hasImages = contextMessages.some(msg => 
       msg.content.includes("[Image Description:") || 
       msg.content.includes("[Referenced Image Description:")
     );
 
-    // Always use text model for response generation, but include image context
     const completion = await groq.chat.completions.create({
       messages: [
         {
           role: "system",
-          content: hasImages 
-            ? "You are a helpful assistant responding to a conversation that includes image descriptions. Use these descriptions to provide relevant and contextual responses."
-            : "You are a helpful assistant that responds to user questions."
+          content: `You are SmolBot, a helpful Discord assistant. You are currently talking to ${currentUsername}. 
+            Always address the user by their name (${currentUsername}). ${
+            hasImages 
+              ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
+              : "Respond to the user's questions directly."
+          } Never mention @smolbotai#9404 in your responses.`
         },
         ...contextMessages
       ],
-      model: "mixtral-8x7b-32768",  // Always use text model for responses
+      model: "mixtral-8x7b-32768",
       temperature: 0.7,
       max_tokens: 1024,
       top_p: 1
     });
 
-    const response = completion.choices[0]?.message?.content ?? "I couldn't generate a response.";
+    const response = completion.choices[0]?.message?.content ?? 
+      `I apologize ${currentUsername}, but I encountered an error while generating a response.`;
+    
+    // Prevent empty responses
+    if (!response.trim()) {
+      return `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`;
+    }
+
     logger.debug({ 
       hasImages,
       contextLength: contextMessages.length,
-      response 
+      response,
+      currentUsername
     }, "Generated AI response");
     
     return response;
   } catch (error) {
     logger.error({ error }, "Failed to generate AI response");
-    return "Sorry, I encountered an error while generating a response.";
+    return `Sorry ${currentUsername}, I encountered an error while generating a response.`;
   }
 }
 
@@ -361,7 +370,6 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-
   try {
     const cachedMessage = await cacheMessage(message);
     
@@ -377,16 +385,36 @@ client.on('messageCreate', async (message) => {
       const channelId = message.channel.id;
       const channelMessages = messageCache.get(guildId)?.get(channelId) ?? [];
 
-      // Pass current message ID to buildAIMessages to use detailed descriptions
+      // Get the display name or username of the current message author
+      const currentUsername = message.member?.displayName ?? message.author.username;
+
+      logger.debug({ 
+        messageId: message.id,
+        authorId: message.author.id,
+        username: currentUsername,
+        displayName: message.member?.displayName,
+        originalUsername: message.author.username
+      }, "User identification debug");
+
       const aiMessages = buildAIMessages(channelMessages, message.id);
       
       logger.debug({ 
         messageId: message.id,
+        username: currentUsername,
+        messageContent: message.content,
         conversationContext: aiMessages 
       }, "Processing bot mention with conversation context");
 
       await message.channel.sendTyping();
-      const responseText = await generateResponse(aiMessages);
+      
+      const responseText = await generateResponse(aiMessages, currentUsername);
+      
+      // Prevent sending empty messages
+      if (!responseText.trim()) {
+        await message.channel.send(`I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`);
+        return;
+      }
+      
       await message.channel.send(responseText);
     }
   } catch (error) {
@@ -394,6 +422,14 @@ client.on('messageCreate', async (message) => {
       messageId: message.id, 
       error 
     }, "Error processing message");
+    
+    // Attempt to send an error message to the user
+    try {
+      const username = message.member?.displayName ?? message.author.username;
+      await message.channel.send(`Sorry ${username}, I encountered an error while processing your message.`);
+    } catch (sendError) {
+      logger.error({ sendError }, "Failed to send error message to user");
+    }
   }
 });
 
