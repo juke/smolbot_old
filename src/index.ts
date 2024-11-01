@@ -1,10 +1,10 @@
 // src/index.ts
 
 import { config } from 'dotenv';
-import { Groq, TextModel, VisionModel } from "groq-sdk";
+import { Groq } from "groq-sdk";
 import { Client, GatewayIntentBits, TextChannel, Message, Collection, GuildEmoji } from "discord.js";
 import pino from "pino";
-import { CachedMessage, AIMessage, ModelConfig, TextModel, VisionModel, MessageQueue } from "./types";
+import { CachedMessage, AIMessage, ModelConfig, MessageQueue, QueuedMessage, TextModel, VisionModel } from "./types";
 
 // Initialize dotenv
 config();
@@ -337,7 +337,10 @@ function handleModelFallback(error: unknown, modelType: "text" | "vision"): bool
     return false;
   }
 
-  const models = modelType === "text" ? MODEL_CONFIG.textModels : MODEL_CONFIG.visionModels;
+  const models = modelType === "text" ? 
+    MODEL_CONFIG.textModels as TextModel[] : 
+    MODEL_CONFIG.visionModels as VisionModel[];
+    
   const currentModel = modelType === "text" ? 
     MODEL_CONFIG.currentTextModel : 
     MODEL_CONFIG.currentVisionModel;
@@ -351,13 +354,15 @@ function handleModelFallback(error: unknown, modelType: "text" | "vision"): bool
   }
 
   if (modelType === "text") {
-    MODEL_CONFIG.currentTextModel = models[nextIndex];
+    const nextModel = models[nextIndex] as TextModel;
+    MODEL_CONFIG.currentTextModel = nextModel;
     logger.info({ 
       previousModel: currentModel, 
       newModel: MODEL_CONFIG.currentTextModel 
     }, "Switched to fallback text model");
   } else {
-    MODEL_CONFIG.currentVisionModel = models[nextIndex];
+    const nextModel = models[nextIndex] as VisionModel;
+    MODEL_CONFIG.currentVisionModel = nextModel;
     logger.info({ 
       previousModel: currentModel, 
       newModel: MODEL_CONFIG.currentVisionModel 

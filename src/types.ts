@@ -83,4 +83,9 @@ export interface QueuedMessage {
 export interface MessageQueue {
   queue: QueuedMessage[];
   isProcessing: boolean;
-} 
+}
+
+/**
+ * Represents a message in Discord
+ */
+export type Message = any;
