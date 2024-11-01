@@ -290,12 +290,10 @@ function cacheGuildEmojis(guildId: string, emojis: Collection<string, GuildEmoji
   }, "Cached guild emojis");
 }
 
-/**
- * Formats an emoji string correctly for Discord
- */
+// Update the formatEmoji function to handle both formats
 function formatEmoji(emojiName: string): string {
   // Remove any colons from the input
-  const cleanName = emojiName.replace(/:/g, "").trim();
+  const cleanName = emojiName.replace(/:/g, "").trim().toLowerCase();
   
   // First check if it's already a properly formatted Discord emoji
   const discordEmojiPattern = /^<a?:[\w-]+:\d+>$/;
@@ -303,7 +301,7 @@ function formatEmoji(emojiName: string): string {
     return emojiName;
   }
   
-  const emoji = MODEL_CONFIG.emojiCache.get(cleanName.toLowerCase());
+  const emoji = MODEL_CONFIG.emojiCache.get(cleanName);
   if (!emoji) {
     // Try to find emoji by clean name (alphanumeric only)
     const cleanSearchName = cleanName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
@@ -313,7 +311,8 @@ function formatEmoji(emojiName: string): string {
         ? `<a:${cleanEmoji.name}:${cleanEmoji.id}>`
         : `<:${cleanEmoji.name}:${cleanEmoji.id}>`;
     }
-    return `:${cleanName}:`; // Return original format if not found
+    // If not found in cache, return the original format
+    return `:${cleanName}:`;
   }
   
   return emoji.animated 
@@ -325,7 +324,7 @@ function formatEmoji(emojiName: string): string {
  * Processes text to properly format any emoji references
  */
 function processEmojiText(text: string): string {
-  // Handle already formatted Discord emojis
+  // Handle already formatted Discord emojis (both static and animated)
   const discordEmojiPattern = /(<a?:[\w-]+:\d+>)/g;
   
   // First preserve any properly formatted Discord emojis
@@ -335,8 +334,12 @@ function processEmojiText(text: string): string {
     return `__EMOJI${preservedEmojis.length - 1}__`;
   });
   
-  // Then handle :emoji_name: patterns - updated regex to handle more characters
+  // Then handle :emoji_name: patterns
   const processedText = preservedText.replace(/:([a-zA-Z0-9_-]+):/g, (match, emojiName) => {
+    // Check if it's already in the preserved emojis to avoid double processing
+    if (preservedEmojis.some(e => e.includes(`:${emojiName}:`))) {
+      return match;
+    }
     return formatEmoji(emojiName);
   });
   
@@ -344,6 +347,24 @@ function processEmojiText(text: string): string {
   return processedText.replace(/__EMOJI(\d+)__/g, (_, index) => {
     return preservedEmojis[parseInt(index)];
   });
+}
+
+/**
+ * Helper function to get formatted emoji list for system prompt
+ */
+function getAvailableEmojis(): string {
+  const emojiSet = new Set<string>();
+  
+  for (const emoji of MODEL_CONFIG.emojiCache.values()) {
+    // Add both formats for each emoji
+    emojiSet.add(`:${emoji.name}:`);
+    emojiSet.add(emoji.animated 
+      ? `<a:${emoji.name}:${emoji.id}>`
+      : `<:${emoji.name}:${emoji.id}>`
+    );
+  }
+  
+  return Array.from(emojiSet).join(", ") || "No custom emojis available";
 }
 
 /**
@@ -546,14 +567,6 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
         username: currentUsername
       }, "Generating AI response");
 
-      // Add this helper function to get formatted emoji list
-      function getAvailableEmojis(): string {
-        const emojiList = Array.from<CachedEmoji>(MODEL_CONFIG.emojiCache.values())
-          .map(emoji => `:${emoji.name}:`)
-          .join(", ");
-        return emojiList || "No custom emojis available";
-      }
-
       const completion = await groq.chat.completions.create({
         messages: [
           {
@@ -587,7 +600,43 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             7. Just respond naturally as if you're chatting in the Discord server
             8. Keep responses casual and lowercase
             9. Feel free to use Discord emotes naturally in your responses when appropriate
+
+            Example good responses:
+            - "hello there"
+            - "hey!"
+            - "that's a great image!"
             
+            Example bad responses:
+            - "smolmemebot: Hello there"
+            - "Hey there! [Referenced Message from User123: hi]"
+            - "That's a great image! [Image Description: a cat sleeping]"
+            
+            Available Discord emotes (use them by wrapping the name in colons):
+            ${getAvailableEmojis()}
+            
+            Example emote usage:
+            - Single emote: :pepe:
+            - Multiple emotes: gm :pepe: farming time :wojak: :copium:
+            
+            ${hasImages 
+              ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
+              : "Respond to the user's questions directly."
+            } 
+            The messages you *receive* will be formatted as "Username: message content" sometimes with tags like [Image Description:...] or "[Referenced Message from...]".
+
+            The messages you *send* should be formatted as "Your own message content", without any other text or tags.
+            
+            CRITICAL INSTRUCTIONS:
+            1. DO NOT start your response with "smolmemebot:" or any other prefix
+            2. DO NOT include "[Referenced Message from...]" in your response
+            3. DO NOT repeat or echo back the user's message or messages in the conversation
+            4. DO NOT respond with "${currentUsername}:" or other username strings
+            5. DO NOT include any other text in your response, just your message to ${currentUsername}
+            6. DO NOT include ${currentUsername}'s message in your response, or other messages in the conversation
+            7. Just respond naturally as if you're chatting in the Discord server
+            8. Keep responses casual and lowercase
+            9. Feel free to use Discord emotes naturally in your responses when appropriate
+
             Example good responses:
             - "hello there"
             - "hey!"
