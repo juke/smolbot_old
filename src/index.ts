@@ -4,7 +4,7 @@ import { config } from 'dotenv';
 import { Groq } from "groq-sdk";
 import { Client, GatewayIntentBits, TextChannel, Message, Collection, GuildEmoji } from "discord.js";
 import pino from "pino";
-import { CachedMessage, AIMessage, ModelConfig, TextModel, VisionModel } from "./types";
+import { CachedMessage, AIMessage, ModelConfig, TextModel, VisionModel, MessageQueue } from "./types";
 
 // Initialize dotenv
 config();
@@ -59,6 +59,118 @@ const MODEL_CONFIG: ModelConfig = {
   currentVisionModel: "llama-3.2-11b-vision-preview",
   emojiCache: new Map()
 };
+
+// Replace the rate limiting configuration with queue configuration
+const QUEUE_CONFIG = {
+  maxQueueSize: 5,    // Maximum number of messages in queue
+  processingDelay: 2500 // Milliseconds to wait between processing messages
+};
+
+// Replace activeRequests with messageQueues
+const messageQueues = new Map<string, MessageQueue>();
+
+/**
+ * Gets or creates a message queue for a channel
+ */
+function getChannelQueue(channelId: string): MessageQueue {
+  if (!messageQueues.has(channelId)) {
+    messageQueues.set(channelId, {
+      queue: [],
+      isProcessing: false
+    });
+  }
+  return messageQueues.get(channelId)!;
+}
+
+/**
+ * Adds a message to the processing queue
+ */
+function queueMessage(message: Message): boolean {
+  const channelQueue = getChannelQueue(message.channel.id);
+  
+  // Check if queue is full
+  if (channelQueue.queue.length >= QUEUE_CONFIG.maxQueueSize) {
+    return false;
+  }
+  
+  // Create queued message object
+  const queuedMessage: QueuedMessage = {
+    message,
+    timestamp: Date.now()
+  };
+  
+  // Add message to end of queue (FIFO)
+  channelQueue.queue.push(queuedMessage);
+  
+  // Start processing if not already running
+  if (!channelQueue.isProcessing) {
+    void processChannelQueue(message.channel.id);
+  }
+  
+  return true;
+}
+
+/**
+ * Processes messages in a channel's queue
+ */
+async function processChannelQueue(channelId: string): Promise<void> {
+  const channelQueue = getChannelQueue(channelId);
+  
+  // Set processing flag
+  channelQueue.isProcessing = true;
+  
+  try {
+    while (channelQueue.queue.length > 0) {
+      const queuedMessage = channelQueue.queue[0];
+      
+      try {
+        // Process the message
+        const guildId = queuedMessage.message.guild?.id ?? "DM";
+        const channelMessages = messageCache.get(guildId)?.get(channelId) ?? [];
+        const currentUsername = queuedMessage.message.member?.displayName ?? 
+          queuedMessage.message.author.username;
+        
+        const aiMessages = buildAIMessages(channelMessages, queuedMessage.message.id);
+        
+        await queuedMessage.message.channel.sendTyping();
+        const responseText = await generateResponse(aiMessages, currentUsername);
+        
+        await queuedMessage.message.reply({
+          content: processEmojiText(responseText),
+          failIfNotExists: false
+        });
+        
+      } catch (error) {
+        logger.error({ 
+          messageId: queuedMessage.message.id, 
+          error 
+        }, "Error processing queued message");
+        
+        try {
+          const username = queuedMessage.message.member?.displayName ?? 
+            queuedMessage.message.author.username;
+          await queuedMessage.message.reply({
+            content: `Sorry ${username}, I encountered an error while processing your message.`,
+            failIfNotExists: false
+          });
+        } catch (sendError) {
+          logger.error({ sendError }, "Failed to send error message to user");
+        }
+      }
+      
+      // Remove processed message from queue
+      channelQueue.queue.shift();
+      
+      // Add delay between processing messages
+      if (channelQueue.queue.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, QUEUE_CONFIG.processingDelay));
+      }
+    }
+  } finally {
+    // Clear processing flag when done
+    channelQueue.isProcessing = false;
+  }
+}
 
 /**
  * Caches all emojis from a guild
@@ -379,16 +491,6 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
               Just respond naturally like you're a chatter in the Discord server. Keep your responses concise and to the point.
               Use lowercase for your responses and be casual. Don't include any other text in your responses, just your message to the user.
               Feel free to use emojis naturally in your responses when appropriate.
-              
-              Here's how messages look in our chat (NOTE: these tags are just to help you understand - never include them in your responses):
-              
-              [User123]: hello!
-              [Image Description: a cat sleeping]
-              
-              [smolbotai]: aww what a sleepy kitty :sleepcat:
-              [Referenced Message from User123: hello!]
-              [Referenced Image Description: a cat sleeping]
-              
               IMPORTANT: Only respond with your message text - no tags or formatting.
               Example good response: "aww what a sleepy kitty :sleepcat:"
               Example bad response: "[smolbotai]: aww what a sleepy kitty :sleepcat: [Referenced Message from User123: hello!]"
@@ -641,6 +743,7 @@ client.on('ready', () => {
   });
 });
 
+// Modify the messageCreate event handler to use the queue
 client.on('messageCreate', async (message) => {
   try {
     // Always cache the message, regardless of author
@@ -659,64 +762,22 @@ client.on('messageCreate', async (message) => {
       : false;
 
     if (mentioned || isReplyToBot) {
-      const guildId = message.guild?.id ?? "DM";
-      const channelId = message.channel.id;
-      const channelMessages = messageCache.get(guildId)?.get(channelId) ?? [];
-
-      const currentUsername = message.member?.displayName ?? message.author.username;
-
-      logger.debug({ 
-        messageId: message.id,
-        authorId: message.author.id,
-        username: currentUsername,
-        displayName: message.member?.displayName,
-        originalUsername: message.author.username
-      }, "User identification debug");
-
-      const aiMessages = buildAIMessages(channelMessages, message.id);
+      // Try to queue the message
+      const queued = queueMessage(message);
       
-      logger.debug({ 
-        messageId: message.id,
-        username: currentUsername,
-        messageContent: message.content,
-        conversationContext: aiMessages 
-      }, "Processing bot mention with conversation context");
-
-      await message.channel.sendTyping();
-      
-      const responseText = await generateResponse(aiMessages, currentUsername);
-      
-      // Prevent sending empty messages
-      if (!responseText.trim()) {
+      if (!queued) {
+        const username = message.member?.displayName ?? message.author.username;
         await message.reply({
-          content: `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`,
+          content: `Sorry ${username}, there are too many pending messages. Please try again later.`,
           failIfNotExists: false
         });
-        return;
       }
-      
-      // Use reply instead of send
-      await message.reply({
-        content: processEmojiText(responseText),
-        failIfNotExists: false  // Prevents errors if the original message was deleted
-      });
     }
   } catch (error) {
     logger.error({ 
       messageId: message.id, 
       error 
-    }, "Error processing message");
-    
-    // Attempt to send an error message as a reply
-    try {
-      const username = message.member?.displayName ?? message.author.username;
-      await message.reply({
-        content: `Sorry ${username}, I encountered an error while processing your message.`,
-        failIfNotExists: false
-      });
-    } catch (sendError) {
-      logger.error({ sendError }, "Failed to send error message to user");
-    }
+    }, "Error handling message");
   }
 });
 

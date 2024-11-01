@@ -67,4 +67,20 @@ export interface ModelConfig {
   currentTextModel: TextModel;
   currentVisionModel: VisionModel;
   emojiCache: Map<string, CachedEmoji>;
+}
+
+/**
+ * Represents a queued message
+ */
+export interface QueuedMessage {
+  message: Message;
+  timestamp: number;
+}
+
+/**
+ * Represents a message queue
+ */
+export interface MessageQueue {
+  queue: QueuedMessage[];
+  isProcessing: boolean;
 } 
