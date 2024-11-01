@@ -562,12 +562,12 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             
             Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response to help you craft a more relevant and contextual response.
             
-            Available server emojis (use them by wrapping the name in colons):
+            Available Discord emotes (use them by wrapping the name in colons):
             ${getAvailableEmojis()}
             
-            Example emoji usage: 
-            - Single emoji: :emoji_name:
-            - Multiple emojis: hello :emoji1: how are you :emoji2:
+            Example emote usage:
+            - Single emote: :pepe:
+            - Multiple emotes: gm :pepe: farming time :wojak: :copium:
             
             ${hasImages 
               ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
@@ -578,7 +578,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             The messages you *send* should be formatted as "Your own message content", without any other text or tags.
             
             CRITICAL INSTRUCTIONS:
-            1. DO NOT start your response with "smolbotai:" or any other prefix
+            1. DO NOT start your response with "smolmemebot:" or any other prefix
             2. DO NOT include "[Referenced Message from...]" in your response
             3. DO NOT repeat or echo back the user's message or messages in the conversation
             4. DO NOT respond with "${currentUsername}:" or other username strings
@@ -586,7 +586,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             6. DO NOT include ${currentUsername}'s message in your response, or other messages in the conversation
             7. Just respond naturally as if you're chatting in the Discord server
             8. Keep responses casual and lowercase
-            9. Feel free to use emojis naturally in your responses when appropriate
+            9. Feel free to use Discord emotes naturally in your responses when appropriate
             
             Example good responses:
             - "hello there"
@@ -594,7 +594,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             - "that's a great image!"
             
             Example bad responses:
-            - "smolbotai: Hello there"
+            - "smolmemebot: Hello there"
             - "Hey there! [Referenced Message from User123: hi]"
             - "That's a great image! [Image Description: a cat sleeping]"
             `
@@ -612,7 +612,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
       
       // Clean up any remaining formatting artifacts
       const cleanedResponse = response
-        .replace(/^\[?smolbotai:?\]?\s*/i, '')  // Remove any smolbotai prefix
+        .replace(/^\[?smolmemebot:?\]?\s*/i, '')  // Remove any smolbotai prefix
         .replace(/\[Referenced Message.*?\]/g, '') // Remove any [Referenced Message...] text
         .trim();
 
