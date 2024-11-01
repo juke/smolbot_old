@@ -1,7 +1,7 @@
 // src/index.ts
 
 import { config } from 'dotenv';
-import { Groq } from "groq-sdk";
+import { Groq, TextModel, VisionModel } from "groq-sdk";
 import { Client, GatewayIntentBits, TextChannel, Message, Collection, GuildEmoji } from "discord.js";
 import pino from "pino";
 import { CachedMessage, AIMessage, ModelConfig, TextModel, VisionModel, MessageQueue } from "./types";
