@@ -611,12 +611,9 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             - "Hey there! [Referenced Message from User123: hi]"
             - "That's a great image! [Image Description: a cat sleeping]"
             
-            Available Discord emotes (use them by wrapping the name in colons):
+            Available Discord emotes (use them by wrapping the name in colons, like so: :emote_name:):
             ${getAvailableEmojis()}
             
-            Example emote usage:
-            - Single emote: :pepe:
-            - Multiple emotes: gm :pepe: farming time :wojak: :copium:
             
             ${hasImages 
               ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
