@@ -144,9 +144,15 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             hasImages 
               ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
               : "Respond to the user's questions directly."
-          } Never mention @smolbotai#9404 in your responses.`
+          } 
+          The messages you receive will be formatted as [Username]: Message Content.
+          Never include [Username]: or [smolbotai]: in your responses - just respond naturally.`
         },
-        ...contextMessages
+        ...contextMessages,
+        {
+          role: "assistant",
+          content: "[smolbotai]: "  // Prefill the assistant's response
+        }
       ],
       model: "mixtral-8x7b-32768",
       temperature: 0.7,
@@ -162,14 +168,19 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
       return `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`;
     }
 
+    // Simply return everything after the prefill
+    const cleanedResponse = response.includes("[smolbotai]: ") 
+      ? response.split("[smolbotai]: ")[1] 
+      : response;
+
     logger.debug({ 
       hasImages,
       contextLength: contextMessages.length,
-      response,
+      response: cleanedResponse,
       currentUsername
     }, "Generated AI response");
     
-    return response;
+    return cleanedResponse || `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`;
   } catch (error) {
     logger.error({ error }, "Failed to generate AI response");
     return `Sorry ${currentUsername}, I encountered an error while generating a response.`;
@@ -328,12 +339,12 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
  */
 function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): AIMessage[] {
   return messages.map((msg): AIMessage => {
-    const contentParts = [msg.content];
+    // Add the author's name to the start of the content
+    const contentParts = [`[${msg.authorDisplayName}]: ${msg.content}`];
     
     // Add image descriptions
     if (msg.imageDescriptions.length > 0) {
       msg.imageDescriptions.forEach(desc => {
-        // Use detailed description only for the current message if it's being directly responded to
         if (msg.id === currentMessageId && desc.detailed) {
           contentParts.push(`[Image Description: ${desc.detailed}]`);
         } else {
@@ -347,7 +358,6 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
       contentParts.push(`[Referenced Message from ${msg.referencedMessage.authorDisplayName}: ${msg.referencedMessage.content}]`);
       if (msg.referencedMessage.imageDescriptions.length > 0) {
         msg.referencedMessage.imageDescriptions.forEach(desc => {
-          // Use detailed description for referenced images when the message is being responded to
           if (msg.id === currentMessageId && desc.detailed) {
             contentParts.push(`[Referenced Image Description: ${desc.detailed}]`);
           } else {
@@ -359,7 +369,6 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
 
     return {
       role: msg.authorId === client.user?.id ? "assistant" : "user",
-      name: msg.authorDisplayName,
       content: contentParts.join("\n"),
     };
   });
