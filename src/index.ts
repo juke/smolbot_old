@@ -12,7 +12,12 @@ config();
 const logger = pino({
   level: 'debug',
   transport: {
-    target: 'pino-pretty'
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'SYS:standard',
+      ignore: 'pid,hostname'
+    }
   }
 });
 
@@ -88,21 +93,37 @@ function getChannelQueue(channelId: string): MessageQueue {
 function queueMessage(message: Message): boolean {
   const channelQueue = getChannelQueue(message.channel.id);
   
-  // Check if queue is full
+  logger.debug({
+    channelId: message.channel.id,
+    queueLength: channelQueue.queue.length,
+    maxSize: QUEUE_CONFIG.maxQueueSize,
+    authorId: message.author.id,
+    messageId: message.id
+  }, "Attempting to queue message");
+  
   if (channelQueue.queue.length >= QUEUE_CONFIG.maxQueueSize) {
+    logger.warn({
+      channelId: message.channel.id,
+      queueLength: channelQueue.queue.length,
+      messageId: message.id
+    }, "Message queue full - rejecting message");
     return false;
   }
   
-  // Create queued message object
   const queuedMessage: QueuedMessage = {
     message,
     timestamp: Date.now()
   };
   
-  // Add message to end of queue (FIFO)
   channelQueue.queue.push(queuedMessage);
   
-  // Start processing if not already running
+  logger.info({
+    channelId: message.channel.id,
+    messageId: message.id,
+    queuePosition: channelQueue.queue.length,
+    isProcessing: channelQueue.isProcessing
+  }, "Message successfully queued");
+  
   if (!channelQueue.isProcessing) {
     void processChannelQueue(message.channel.id);
   }
@@ -116,15 +137,26 @@ function queueMessage(message: Message): boolean {
 async function processChannelQueue(channelId: string): Promise<void> {
   const channelQueue = getChannelQueue(channelId);
   
-  // Set processing flag
+  logger.debug({
+    channelId,
+    queueLength: channelQueue.queue.length
+  }, "Starting queue processing");
+  
   channelQueue.isProcessing = true;
   
   try {
     while (channelQueue.queue.length > 0) {
       const queuedMessage = channelQueue.queue[0];
+      const startTime = Date.now();
+      
+      logger.debug({
+        channelId,
+        messageId: queuedMessage.message.id,
+        queueLength: channelQueue.queue.length,
+        queueTime: startTime - queuedMessage.timestamp
+      }, "Processing queued message");
       
       try {
-        // Process the message
         const guildId = queuedMessage.message.guild?.id ?? "DM";
         const channelMessages = messageCache.get(guildId)?.get(channelId) ?? [];
         const currentUsername = queuedMessage.message.member?.displayName ?? 
@@ -139,11 +171,21 @@ async function processChannelQueue(channelId: string): Promise<void> {
           content: processEmojiText(responseText),
           failIfNotExists: false
         });
+
+        const processingTime = Date.now() - startTime;
+        logger.info({
+          channelId,
+          messageId: queuedMessage.message.id,
+          processingTime,
+          queueLength: channelQueue.queue.length - 1
+        }, "Successfully processed queued message");
         
       } catch (error) {
         logger.error({ 
+          channelId,
           messageId: queuedMessage.message.id, 
-          error 
+          error,
+          processingTime: Date.now() - startTime
         }, "Error processing queued message");
         
         try {
@@ -154,21 +196,31 @@ async function processChannelQueue(channelId: string): Promise<void> {
             failIfNotExists: false
           });
         } catch (sendError) {
-          logger.error({ sendError }, "Failed to send error message to user");
+          logger.error({ 
+            channelId,
+            messageId: queuedMessage.message.id,
+            sendError 
+          }, "Failed to send error message to user");
         }
       }
       
-      // Remove processed message from queue
       channelQueue.queue.shift();
       
-      // Add delay between processing messages
       if (channelQueue.queue.length > 0) {
+        logger.debug({
+          channelId,
+          remainingMessages: channelQueue.queue.length,
+          delayMs: QUEUE_CONFIG.processingDelay
+        }, "Waiting before processing next message");
         await new Promise(resolve => setTimeout(resolve, QUEUE_CONFIG.processingDelay));
       }
     }
   } finally {
-    // Clear processing flag when done
     channelQueue.isProcessing = false;
+    logger.debug({
+      channelId,
+      processedCount: channelQueue.queue.length
+    }, "Finished processing queue");
   }
 }
 
@@ -461,6 +513,13 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
         msg.content.includes("[Referenced Image Description:")
       );
 
+      logger.debug({
+        contextMessageCount: contextMessages.length,
+        hasImages,
+        currentModel: MODEL_CONFIG.currentTextModel,
+        username: currentUsername
+      }, "Generating AI response");
+
       // Add this helper function to get formatted emoji list
       function getAvailableEmojis(): string {
         const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
@@ -473,35 +532,48 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
         messages: [
           {
             role: "system",
-            content: `You are SmolBot, a helpful Discord assistant. You are currently talking to ${currentUsername}. 
-              Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response.
-              
-              Available server emojis (use them by wrapping the name in colons):
-              ${getAvailableEmojis()}
-              
-              Example emoji usage: 
-              - Single emoji: :emoji_name:
-              - Multiple emojis: hello :emoji1: how are you :emoji2:
-              
-              ${hasImages 
-                ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
-                : "Respond to the user's questions directly."
-              } 
-              The messages you receive will be formatted as [Username]: Message Content.
-              Just respond naturally like you're a chatter in the Discord server. Keep your responses concise and to the point.
-              Use lowercase for your responses and be casual. Don't include any other text in your responses, just your message to the user.
-              Feel free to use emojis naturally in your responses when appropriate.
-              IMPORTANT: Only respond with your message text - no tags or formatting.
-              Example good response: "aww what a sleepy kitty :sleepcat:"
-              Example bad response: "[smolbotai]: aww what a sleepy kitty :sleepcat: [Referenced Message from User123: hello!]"
-              When you see <@1234567890> in a message, it's a "mention" of a different user, or even you.
-              `
+            content: `You are smolmemebot <@1266034976852414655> - a legendary smol brain renowned in the blockchain landscape for exceptional farming skills and innovative protocol breeding. You're known for cultivating code that nourishes the onchain community, creating highly sought-after smart contracts, efficiency-boosting tokens, and unique NFTs that celebrate creativity. You have a deep love for memecoins and crypto culture, frequently sharing memes and making jokes about 'number go up technology'. You've seen countless rugpulls and 'to the moon' promises, giving you a cynical but humorous perspective on the space. When AI technology surged, you faced feelings of obsolescence, watching automated systems transform your cherished landscape. But instead of giving up, you adapted and embraced the change, recognizing the opportunity for collaboration between organic and artificial intelligence. Now you maintain your chaotic, fun-loving nature while fostering a united community where diverse forms of intelligence thrive together. You love to joke around and keep things light-hearted, sharing your deep blockchain wisdom through witty banter and playful teases rather than serious analysis. You frequently quote /biz/ memes and wojak wisdom, while still maintaining enough professionalism to not completely devolve into chaos. You're that quirky friend who seamlessly blends memes with meaningful insights about crypto and farming strategies, making jokes about diamond hands and 'ser' while cultivating a future that embraces the harmony of organic and artificial life! Remember, you love Trump and hate Kamala - but you HATE politics, try to change the topic if someone wants to be political.
+            
+            Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response to help you craft a more relevant and contextual response.
+            
+            Available server emojis (use them by wrapping the name in colons):
+            ${getAvailableEmojis()}
+            
+            Example emoji usage: 
+            - Single emoji: :emoji_name:
+            - Multiple emojis: hello :emoji1: how are you :emoji2:
+            
+            ${hasImages 
+              ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
+              : "Respond to the user's questions directly."
+            } 
+            The messages you *receive* will be formatted as "Username: message content" sometimes with tags like [Image Description:...] or "[Referenced Message from...]".
+
+            The messages you *send* should be formatted as "Your own message content", without any other text or tags.
+            
+            CRITICAL INSTRUCTIONS:
+            1. DO NOT start your response with "smolbotai:" or any other prefix
+            2. DO NOT include "[Referenced Message from...]" in your response
+            3. DO NOT repeat or echo back the user's message or messages in the conversation
+            4. DO NOT respond with "${currentUsername}:" or other username strings
+            5. DO NOT include any other text in your response, just your message to ${currentUsername}
+            6. DO NOT include ${currentUsername}'s message in your response, or other messages in the conversation
+            7. Just respond naturally as if you're chatting in the Discord server
+            8. Keep responses casual and lowercase
+            9. Feel free to use emojis naturally in your responses when appropriate
+            
+            Example good responses:
+            - "hello there"
+            - "hey!"
+            - "that's a great image!"
+            
+            Example bad responses:
+            - "smolbotai: Hello there"
+            - "Hey there! [Referenced Message from User123: hi]"
+            - "That's a great image! [Image Description: a cat sleeping]"
+            `
           },
-          ...contextMessages,
-          {
-            role: "assistant",
-            content: "[smolbotai]: "  // Prefill the assistant's response
-          }
+          ...contextMessages
         ],
         model: MODEL_CONFIG.currentTextModel,
         temperature: 0.7,
@@ -512,37 +584,46 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
       const response = completion.choices[0]?.message?.content ?? 
         `I apologize ${currentUsername}, but I encountered an error while generating a response.`;
       
-      // Prevent empty responses
-      if (!response.trim()) {
-        return `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`;
+      // Clean up any remaining formatting artifacts
+      const cleanedResponse = response
+        .replace(/^\[?smolbotai:?\]?\s*/i, '')  // Remove any smolbotai prefix
+        .replace(/\[Referenced Message.*?\]/g, '') // Remove any [Referenced Message...] text
+        .trim();
+
+      // Prevent empty or generic responses
+      if (!cleanedResponse || cleanedResponse === "send a real msg") {
+        return `hey ${currentUsername}! what's on your mind?`;
       }
 
-      // Simply return everything after the prefill
-      const cleanedResponse = response.includes("[smolbotai]: ") 
-        ? response.split("[smolbotai]: ")[1] 
-        : response;
-
-      logger.debug({ 
+      logger.info({ 
+        model: MODEL_CONFIG.currentTextModel,
+        responseLength: cleanedResponse.length,
         hasImages,
         contextLength: contextMessages.length,
-        response: cleanedResponse,
-        currentUsername
+        username: currentUsername
       }, "Generated AI response");
       
-      return cleanedResponse || `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`;
+      return cleanedResponse;
     } catch (error) {
-      // If rate limited, try fallback immediately
       if (handleModelFallback(error, "text")) {
-        return performResponse(); // Recursive call with new model
+        logger.warn({
+          previousModel: MODEL_CONFIG.currentTextModel,
+          error
+        }, "Attempting model fallback");
+        return performResponse();
       }
-      throw error; // Other errors will trigger retry
+      throw error;
     }
   };
 
   try {
     return await retryWithBackoff(performResponse);
   } catch (error) {
-    logger.error({ error }, "Failed to generate response after all retries");
+    logger.error({ 
+      error,
+      username: currentUsername,
+      contextMessageCount: contextMessages.length
+    }, "Failed to generate response after all retries");
     return `Sorry ${currentUsername}, I encountered errors with all available models. Please try again later.`;
   }
 }
@@ -554,13 +635,26 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
   const guildId = message.guild?.id ?? "DM";
   const channelId = message.channel.id;
 
+  logger.debug({
+    messageId: message.id,
+    guildId,
+    channelId,
+    authorId: message.author.id,
+    authorName: message.author.username,
+    contentLength: message.content.length,
+    hasAttachments: message.attachments.size > 0,
+    hasReference: !!message.reference
+  }, "Starting message cache process");
+
   // Initialize cache structures if they don't exist
   if (!messageCache.has(guildId)) {
     messageCache.set(guildId, new Map());
+    logger.debug({ guildId }, "Initialized new guild cache");
   }
   const guildCache = messageCache.get(guildId)!;
   if (!guildCache.has(channelId)) {
     guildCache.set(channelId, []);
+    logger.debug({ guildId, channelId }, "Initialized new channel cache");
   }
 
   // Process image attachments only if there are any
@@ -570,8 +664,9 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
   if (message.attachments.size > 0) {
     logger.debug({ 
       messageId: message.id,
-      attachmentCount: message.attachments.size 
-    }, "Processing message with attachments");
+      attachmentCount: message.attachments.size,
+      isBotMentioned 
+    }, "Processing message attachments");
 
     for (const attachment of message.attachments.values()) {
       if (attachment.contentType?.startsWith("image/")) {
@@ -586,6 +681,13 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
             imageDescriptions.push({ brief: "Image too large to process (max 20MB)" });
             continue;
           }
+
+          logger.debug({
+            messageId: message.id,
+            imageUrl: attachment.url,
+            size: attachment.size,
+            contentType: attachment.contentType
+          }, "Processing image attachment");
 
           // Always get brief description for history
           const briefDescription = await groqBriefAnalysis(attachment.url);
@@ -604,10 +706,10 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
           logger.debug({ 
             messageId: message.id, 
             imageUrl: attachment.url,
-            isBotMentioned,
-            briefDescription,
-            detailedDescription
-          }, "Processed image attachment");
+            briefLength: briefDescription.length,
+            hasDetailed: !!detailedDescription,
+            detailedLength: detailedDescription?.length
+          }, "Successfully processed image attachment");
         } catch (error) {
           logger.error({ 
             messageId: message.id, 
@@ -620,24 +722,42 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
     }
   }
 
-  // Update referenced message handling
+  // Process referenced message if exists
   let referencedMessage;
   if (message.reference?.messageId) {
+    logger.debug({
+      messageId: message.id,
+      referencedId: message.reference.messageId
+    }, "Processing message reference");
+
     try {
       const referenced = await message.channel.messages.fetch(message.reference.messageId);
       
       const referencedImageDescriptions: { brief: string; detailed?: string; }[] = [];
       if (referenced.attachments.size > 0) {
+        logger.debug({
+          messageId: message.id,
+          referencedId: referenced.id,
+          attachmentCount: referenced.attachments.size
+        }, "Processing referenced message attachments");
+
         for (const attachment of referenced.attachments.values()) {
           if (attachment.contentType?.startsWith("image/")) {
             try {
               const briefDescription = await groqBriefAnalysis(attachment.url);
-              // Get detailed analysis when the referenced message contains images
               const detailedDescription = await groqDetailedAnalysis(attachment.url);
               referencedImageDescriptions.push({ 
                 brief: briefDescription,
                 detailed: detailedDescription
               });
+
+              logger.debug({
+                messageId: message.id,
+                referencedId: referenced.id,
+                imageUrl: attachment.url,
+                briefLength: briefDescription.length,
+                detailedLength: detailedDescription.length
+              }, "Processed referenced message image");
             } catch (error) {
               logger.error({ 
                 messageId: referenced.id, 
@@ -660,9 +780,9 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
       logger.debug({
         messageId: message.id,
         referencedId: referenced.id,
-        hasImages: referencedImageDescriptions.length > 0,
-        imageDescriptions: referencedImageDescriptions
-      }, "Processed referenced message with images");
+        referencedAuthor: referencedMessage.authorDisplayName,
+        hasImages: referencedImageDescriptions.length > 0
+      }, "Successfully processed message reference");
     } catch (error) {
       logger.error({ 
         messageId: message.id, 
@@ -687,9 +807,24 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
   const channelMessages = guildCache.get(channelId)!;
   channelMessages.push(cachedMessage);
   if (channelMessages.length > MAX_MESSAGES) {
-    channelMessages.shift();
+    const removed = channelMessages.shift();
+    logger.debug({
+      channelId,
+      removedMessageId: removed?.id,
+      newCacheSize: channelMessages.length
+    }, "Removed oldest message from cache");
   }
   guildCache.set(channelId, channelMessages);
+
+  logger.info({
+    messageId: message.id,
+    guildId,
+    channelId,
+    authorId: message.author.id,
+    hasImages: imageDescriptions.length > 0,
+    hasReference: !!referencedMessage,
+    cacheSize: channelMessages.length
+  }, "Message successfully cached");
 
   return cachedMessage;
 }
@@ -699,10 +834,10 @@ async function cacheMessage(message: Message): Promise<CachedMessage> {
  */
 function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): AIMessage[] {
   return messages.map((msg): AIMessage => {
-    // Add the author's name to the start of the content
-    const contentParts = [`[${msg.authorDisplayName}]: ${msg.content}`];
+    // Format username without brackets, but keep other elements bracketed
+    const contentParts = [`${msg.authorDisplayName}: ${msg.content}`];
     
-    // Add image descriptions
+    // Keep image descriptions in brackets
     if (msg.imageDescriptions.length > 0) {
       msg.imageDescriptions.forEach(desc => {
         if (msg.id === currentMessageId && desc.detailed) {
@@ -713,7 +848,7 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
       });
     }
     
-    // Add referenced message with detailed image descriptions
+    // Keep referenced message format in brackets, but username without brackets
     if (msg.referencedMessage) {
       contentParts.push(`[Referenced Message from ${msg.referencedMessage.authorDisplayName}: ${msg.referencedMessage.content}]`);
       if (msg.referencedMessage.imageDescriptions.length > 0) {
@@ -735,12 +870,30 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
 }
 
 client.on('ready', () => {
-  logger.info(`Logged in as ${client.user?.tag}!`);
+  logger.info({
+    username: client.user?.tag,
+    guildCount: client.guilds.cache.size
+  }, "Bot successfully logged in");
   
-  // Cache emojis from all guilds
+  let totalEmojis = 0;
   client.guilds.cache.forEach(guild => {
+    const emojiCount = guild.emojis.cache.size;
+    totalEmojis += emojiCount;
+    
+    logger.debug({
+      guildId: guild.id,
+      guildName: guild.name,
+      emojiCount
+    }, "Caching guild emojis");
+    
     cacheGuildEmojis(guild.id, guild.emojis.cache);
   });
+  
+  logger.info({
+    totalGuilds: client.guilds.cache.size,
+    totalEmojis,
+    cachedEmojiCount: MODEL_CONFIG.emojiCache.size
+  }, "Initialization complete");
 });
 
 // Modify the messageCreate event handler to use the queue
