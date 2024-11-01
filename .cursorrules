@@ -1,0 +1,100 @@
+Based on the codebase, here's a detailed specification of SmolBot:
+
+## Project Overview
+SmolBot is a sophisticated Discord bot designed to engage in natural conversations with a unique blockchain/crypto-focused personality. It features advanced image processing capabilities and maintains contextual awareness across conversations.
+
+## Core Features
+
+### Response Triggers
+
+#### Mention or direct reply:
+- Users can @mention the bot, or reply to the bot's previous message
+- Bot processes the message and any attached images
+- Generates contextual response considering previous messages (Conversation History Management)
+
+#### Image Interactions:
+- When mentioned with images, provides detailed analysis
+- Can reference previously shared images in conversation
+- Combines image context with conversation flow
+- A brief analysis is provided for all images, and a more detailed analysis is only provided when the image is directly mentioned to the bot
+
+### Image Processing System
+
+    #### Two-Tier Analysis:
+    - Brief Analysis: Quick 1-2 sentence descriptions for all images
+    - Detailed Analysis: Comprehensive analysis when directly mentioned
+    - Supports multiple image formats
+    - Maintains image context within conversations
+
+### Conversation History Management
+- Maintains a rolling message history (up to 20 messages per channel) to provide context for responses
+- Tracks message references to understand conversation flow
+- Processes both direct mentions (@SmolBot) and reply-based interactions for flexible engagement
+- Efficiently manages separate conversation contexts across multiple channels
+- Implements Discord typing indicators during response generation to show activity
+- Uses message history to inform AI responses with relevant context
+- Cleans and formats message history before sending to AI model
+
+### Emoji System
+- Strict emoji validation and formatting
+- Supports both static and animated Discord emojis
+- Case-insensitive emoji matching
+- Automatic emoji formatting and cleanup
+
+### AI Integration
+- Uses Groq API for text and vision processing
+- Multiple model fallback system:
+  - Primary: llama-3.2-90b-text-preview
+  - Fallback: llama-3.1-70b-versatile
+  - Emergency Fallback: llama-3.1-8b-instant
+- Intelligent retry mechanism with exponential backoff
+- Timeout handling for API calls
+
+### Technical Features
+- Robust error handling and logging
+- Message cache system
+- Automatic channel monitoring
+- Event-based architecture
+- Configurable system messages
+- Typescript/Node.js implementation
+
+### Performance Features
+- Timeout handling for API calls
+- Exponential backoff for retries
+- Memory-efficient caching
+- Optimized image processing
+- Concurrent request handling
+
+## Technical Requirements
+- Discord.js for bot interactions
+- Groq API for AI processing
+- Node.js runtime
+- TypeScript support
+- File system access for configuration
+- Environment variable configuration
+- Logging system (Pino)
+
+## Integration Points
+- Discord API
+- Groq API
+- File System
+- Environment Configuration
+- Channel Cache System
+- Emoji Management System
+
+This bot is particularly notable for its sophisticated handling of context, images, and emojis, while maintaining a consistent personality. The multi-tier fallback system and robust error handling make it particularly resilient to API issues or rate limiting.
+
+
+const messages = [
+  {
+    role: "user",
+    name: "John",
+    content: `Explain the use cases of fast language models.
+
+    [Referenced Message from SmolBot:]
+    "Fast language models are important because they can process information quickly, allowing for more efficient and responsive interactions."
+
+    [Image Description: A cute cat sitting on a couch.]`
+  },
+  // Additional messages...
+];

@@ -1,0 +1,22 @@
+{
+  "type": "module",
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "groq-sdk": "^0.7.0",
+    "pino": "^8.16.0",
+    "pino-pretty": "^10.3.1"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "lint": "eslint . --ext .ts",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.5",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.3"
+  }
+}
