@@ -73,7 +73,7 @@ export interface ModelConfig {
  * Represents a queued message
  */
 export interface QueuedMessage {
-  message: Message;
+  message: DiscordMessage;
   timestamp: number;
 }
 
@@ -84,8 +84,3 @@ export interface MessageQueue {
   queue: QueuedMessage[];
   isProcessing: boolean;
 }
-
-/**
- * Represents a message in Discord
- */
-export type Message = any;

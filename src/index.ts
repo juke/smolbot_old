@@ -2,9 +2,25 @@
 
 import { config } from 'dotenv';
 import { Groq } from "groq-sdk";
-import { Client, GatewayIntentBits, TextChannel, Message, Collection, GuildEmoji } from "discord.js";
+import { 
+  Client, 
+  GatewayIntentBits, 
+  TextChannel, 
+  Message as DiscordMessage, 
+  Collection, 
+  GuildEmoji,
+  Guild
+} from "discord.js";
 import pino from "pino";
-import { CachedMessage, AIMessage, ModelConfig, MessageQueue, QueuedMessage, TextModel, VisionModel } from "./types";
+import { 
+  CachedMessage, 
+  AIMessage, 
+  ModelConfig, 
+  MessageQueue, 
+  QueuedMessage, 
+  TextModel, 
+  VisionModel 
+} from "./types";
 
 // Initialize dotenv
 config();
@@ -90,7 +106,7 @@ function getChannelQueue(channelId: string): MessageQueue {
 /**
  * Adds a message to the processing queue
  */
-function queueMessage(message: Message): boolean {
+function queueMessage(message: DiscordMessage): boolean {
   const channelQueue = getChannelQueue(message.channel.id);
   
   logger.debug({
@@ -636,7 +652,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
 /**
  * Stores a message in the cache with all its context
  */
-async function cacheMessage(message: Message): Promise<CachedMessage> {
+async function cacheMessage(message: DiscordMessage): Promise<CachedMessage> {
   const guildId = message.guild?.id ?? "DM";
   const channelId = message.channel.id;
 
@@ -881,7 +897,7 @@ client.on('ready', () => {
   }, "Bot successfully logged in");
   
   let totalEmojis = 0;
-  client.guilds.cache.forEach(guild => {
+  client.guilds.cache.forEach((guild: Guild) => {
     const emojiCount = guild.emojis.cache.size;
     totalEmojis += emojiCount;
     
@@ -902,7 +918,7 @@ client.on('ready', () => {
 });
 
 // Modify the messageCreate event handler to use the queue
-client.on('messageCreate', async (message) => {
+client.on('messageCreate', async (message: DiscordMessage) => {
   try {
     // Always cache the message, regardless of author
     const cachedMessage = await cacheMessage(message);
@@ -940,7 +956,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // Add guild emoji update handlers
-client.on('emojiCreate', (emoji) => {
+client.on('emojiCreate', (emoji: GuildEmoji) => {
   if (!emoji.name) return;
   
   MODEL_CONFIG.emojiCache.set(emoji.name.toLowerCase(), {
@@ -962,7 +978,7 @@ client.on('emojiCreate', (emoji) => {
   }
 });
 
-client.on('emojiDelete', (emoji) => {
+client.on('emojiDelete', (emoji: GuildEmoji) => {
   if (!emoji.name) return;
   
   MODEL_CONFIG.emojiCache.delete(emoji.name.toLowerCase());
@@ -971,7 +987,7 @@ client.on('emojiDelete', (emoji) => {
   MODEL_CONFIG.emojiCache.delete(cleanName);
 });
 
-client.on('emojiUpdate', (oldEmoji, newEmoji) => {
+client.on('emojiUpdate', (oldEmoji: GuildEmoji, newEmoji: GuildEmoji) => {
   if (!oldEmoji.name || !newEmoji.name) return;
   
   // Remove old versions

@@ -4,7 +4,7 @@
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "groq-sdk": "^0.7.0",
-    "pino": "^8.16.0",
+    "pino": "^8.21.0",
     "pino-pretty": "^10.3.1"
   },
   "scripts": {
@@ -15,7 +15,9 @@
     "test": "jest"
   },
   "devDependencies": {
+    "@types/dotenv": "^6.1.1",
     "@types/node": "^20.17.5",
+    "@types/pino": "^7.0.4",
     "tsx": "^4.7.1",
     "typescript": "^5.6.3"
   }
