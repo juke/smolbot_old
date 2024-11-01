@@ -9,7 +9,8 @@ import {
   Message as DiscordMessage, 
   Collection, 
   GuildEmoji,
-  Guild
+  Guild,
+  ChannelType
 } from "discord.js";
 import pino from "pino";
 import { 
@@ -181,7 +182,9 @@ async function processChannelQueue(channelId: string): Promise<void> {
         
         const aiMessages = buildAIMessages(channelMessages, queuedMessage.message.id);
         
-        await queuedMessage.message.channel.sendTyping();
+        if (queuedMessage.message.channel.type === ChannelType.GuildText) {
+          await queuedMessage.message.channel.sendTyping();
+        }
         const responseText = await generateResponse(aiMessages, currentUsername);
         
         await queuedMessage.message.reply({
