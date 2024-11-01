@@ -20,12 +20,12 @@ import {
   QueuedMessage, 
   TextModel, 
   VisionModel 
-} from "./types";
+} from "./types.js";
 
 // Initialize dotenv
 config();
 
-const logger = pino({
+const logger = pino.default({
   level: 'debug',
   transport: {
     target: 'pino-pretty',
@@ -543,7 +543,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
 
       // Add this helper function to get formatted emoji list
       function getAvailableEmojis(): string {
-        const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
+        const emojiList = Array.from<CachedEmoji>(MODEL_CONFIG.emojiCache.values())
           .map(emoji => `:${emoji.name}:`)
           .join(", ");
         return emojiList || "No custom emojis available";
@@ -860,7 +860,7 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
     
     // Keep image descriptions in brackets
     if (msg.imageDescriptions.length > 0) {
-      msg.imageDescriptions.forEach(desc => {
+      msg.imageDescriptions.forEach((desc: { brief: string; detailed?: string }) => {
         if (msg.id === currentMessageId && desc.detailed) {
           contentParts.push(`[Image Description: ${desc.detailed}]`);
         } else {
@@ -873,7 +873,7 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
     if (msg.referencedMessage) {
       contentParts.push(`[Referenced Message from ${msg.referencedMessage.authorDisplayName}: ${msg.referencedMessage.content}]`);
       if (msg.referencedMessage.imageDescriptions.length > 0) {
-        msg.referencedMessage.imageDescriptions.forEach(desc => {
+        msg.referencedMessage.imageDescriptions.forEach((desc: { brief: string; detailed?: string }) => {
           if (msg.id === currentMessageId && desc.detailed) {
             contentParts.push(`[Referenced Image Description: ${desc.detailed}]`);
           } else {

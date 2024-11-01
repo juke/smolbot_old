@@ -1,3 +1,5 @@
+import { Message } from "discord.js";
+
 /**
  * Represents a cached message with additional metadata
  */
@@ -73,7 +75,7 @@ export interface ModelConfig {
  * Represents a queued message
  */
 export interface QueuedMessage {
-  message: DiscordMessage;
+  message: Message;
   timestamp: number;
 }
 
