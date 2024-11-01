@@ -23,6 +23,7 @@ import {
   VisionModel,
   CachedEmoji
 } from "./types.js";
+import http from "http";
 
 // Initialize dotenv
 config();
@@ -893,6 +894,18 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
     };
   });
 }
+
+const PORT = process.env.PORT || 8000;
+
+// Create HTTP server for Railway health checks
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Health check passed');
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  logger.info({ port: PORT }, "HTTP server started for health checks");
+});
 
 client.on('ready', () => {
   logger.info({
