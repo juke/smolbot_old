@@ -140,13 +140,28 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
         {
           role: "system",
           content: `You are SmolBot, a helpful Discord assistant. You are currently talking to ${currentUsername}. 
-            Always address the user by their name (${currentUsername}). ${
+            Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response.${
             hasImages 
               ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
               : "Respond to the user's questions directly."
           } 
           The messages you receive will be formatted as [Username]: Message Content.
-          Never include [Username]: or [smolbotai]: in your responses - just respond naturally.`
+          Just respond naturally like you're a chatter in the Discord server. Keep your responses concise and to the point.
+          Use lowercase for your responses and be casual. Don't include any other text in your responses, just your message to the user.
+          Here's an example of how messages are formatted:
+          --EXAMPLE--
+          [User123]: Hey, check out this photo!
+          [Image Description: A golden retriever puppy playing with a red ball in a sunny backyard]
+          
+          [SmolBot]: that's such a cute puppy! i love how happy they look playing with the ball
+          [Referenced Message from User123: Hey, check out this photo!]
+          [Referenced Image Description: A golden retriever puppy playing with a red ball in a sunny backyard]
+          --EXAMPLE END--
+          Each message includes the username in brackets, followed by their message.
+          Image descriptions are added on new lines after the message.
+          Referenced messages and their image descriptions are included with proper attribution.
+          When you see <@1234567890> in a message, it's a "mention" of a different user, or even you.
+          `
         },
         ...contextMessages,
         {
@@ -154,7 +169,7 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
           content: "[smolbotai]: "  // Prefill the assistant's response
         }
       ],
-      model: "mixtral-8x7b-32768",
+      model: "llama-3.2-90b-text-preview",
       temperature: 0.7,
       max_tokens: 1024,
       top_p: 1
@@ -380,6 +395,11 @@ client.on('ready', () => {
 
 client.on('messageCreate', async (message) => {
   try {
+    // Ignore messages from the bot itself
+    if (message.author.id === client.user?.id) {
+      return;
+    }
+
     const cachedMessage = await cacheMessage(message);
     
     const botId = client.user?.id;
@@ -394,7 +414,6 @@ client.on('messageCreate', async (message) => {
       const channelId = message.channel.id;
       const channelMessages = messageCache.get(guildId)?.get(channelId) ?? [];
 
-      // Get the display name or username of the current message author
       const currentUsername = message.member?.displayName ?? message.author.username;
 
       logger.debug({ 
@@ -420,11 +439,18 @@ client.on('messageCreate', async (message) => {
       
       // Prevent sending empty messages
       if (!responseText.trim()) {
-        await message.channel.send(`I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`);
+        await message.reply({
+          content: `I apologize ${currentUsername}, but I couldn't generate a proper response. Could you please rephrase your question?`,
+          failIfNotExists: false
+        });
         return;
       }
       
-      await message.channel.send(responseText);
+      // Use reply instead of send
+      await message.reply({
+        content: responseText,
+        failIfNotExists: false  // Prevents errors if the original message was deleted
+      });
     }
   } catch (error) {
     logger.error({ 
@@ -432,10 +458,13 @@ client.on('messageCreate', async (message) => {
       error 
     }, "Error processing message");
     
-    // Attempt to send an error message to the user
+    // Attempt to send an error message as a reply
     try {
       const username = message.member?.displayName ?? message.author.username;
-      await message.channel.send(`Sorry ${username}, I encountered an error while processing your message.`);
+      await message.reply({
+        content: `Sorry ${username}, I encountered an error while processing your message.`,
+        failIfNotExists: false
+      });
     } catch (sendError) {
       logger.error({ sendError }, "Failed to send error message to user");
     }
