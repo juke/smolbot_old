@@ -578,10 +578,6 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             Available Discord emotes (use them by wrapping the name in colons):
             ${getAvailableEmojis()}
             
-            Example emote usage:
-            - Single emote: :pepe:
-            - Multiple emotes: gm :pepe: farming time :wojak: :copium:
-            
             ${hasImages 
               ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
               : "Respond to the user's questions directly."
@@ -613,7 +609,6 @@ async function generateResponse(contextMessages: AIMessage[], currentUsername: s
             
             Available Discord emotes (use them by wrapping the name in colons, like so: :emote_name:):
             ${getAvailableEmojis()}
-            
             
             ${hasImages 
               ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
