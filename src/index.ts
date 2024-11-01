@@ -895,7 +895,7 @@ function buildAIMessages(messages: CachedMessage[], currentMessageId?: string): 
   });
 }
 
-const PORT = process.env.PORT || 8000;
+const PORT = parseInt(process.env.PORT || "8000", 10);
 
 // Create HTTP server for Railway health checks
 const server = http.createServer((req, res) => {
@@ -903,7 +903,7 @@ const server = http.createServer((req, res) => {
   res.end('Health check passed');
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, () => {
   logger.info({ port: PORT }, "HTTP server started for health checks");
 });
 
