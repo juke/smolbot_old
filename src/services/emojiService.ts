@@ -228,15 +228,29 @@ export class EmojiService {
     this.currentGuildId = guildId;
     this.currentGuildEmojis = emojis;
 
-    // Don't clear the cache, just update/add new emojis
+    // Clear existing emojis for this guild to prevent stale data
+    Array.from(MODEL_CONFIG.emojiCache.entries()).forEach(([name, emoji]) => {
+      if (emoji.guildId === guildId) {
+        MODEL_CONFIG.emojiCache.delete(name);
+      }
+    });
+
+    // Cache new emojis
     emojis.forEach(emoji => {
       if (!emoji.name) return;
       
       const lowercaseName = emoji.name.toLowerCase();
       
+      logger.debug({
+        name: emoji.name,
+        id: emoji.id,
+        animated: emoji.animated,
+        guildId
+      }, "Caching emoji");
+
       MODEL_CONFIG.emojiCache.set(lowercaseName, {
         id: emoji.id,
-        name: emoji.name, // Keep original name for display
+        name: emoji.name,
         animated: emoji.animated ?? false,
         guildId: guildId
       });
@@ -246,10 +260,14 @@ export class EmojiService {
       }
     });
 
-    // Only update available emojis if cache is empty
-    if (MODEL_CONFIG.emojiCache.size === 0) {
-      this.updateAvailableEmojis();
-    }
+    logger.info({
+      guildId,
+      emojiCount: MODEL_CONFIG.emojiCache.size,
+      emojis: Array.from(MODEL_CONFIG.emojiCache.entries()).map(([name, e]) => ({
+        name,
+        id: e.id
+      }))
+    }, "Updated emoji cache");
   }
 
   /**
@@ -351,12 +369,26 @@ export class EmojiService {
         // Handle :emoji: format
         return input.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
           // Skip if it's a placeholder
-          if (fullMatch.startsWith("__EMOJI")) return fullMatch;
+          if (fullMatch.startsWith("__EMOJI")) {
+            logger.debug({ fullMatch }, "Skipping placeholder");
+            return fullMatch;
+          }
 
           // Basic validation
-          if (!this.isValidEmojiName(emojiName)) return fullMatch;
+          if (!this.isValidEmojiName(emojiName)) {
+            logger.debug({ emojiName }, "Invalid emoji name");
+            return fullMatch;
+          }
 
           const lowercaseName = emojiName.toLowerCase();
+          logger.debug({ 
+            emojiName,
+            lowercaseName,
+            cacheSize: MODEL_CONFIG.emojiCache.size,
+            cacheHas: MODEL_CONFIG.emojiCache.has(lowercaseName),
+            cachedEmoji: MODEL_CONFIG.emojiCache.get(lowercaseName)
+          }, "Emoji lookup");
+
           const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
 
           if (emoji) {
@@ -372,9 +404,11 @@ export class EmojiService {
               formatted: formattedEmoji,
               animated: emoji.animated,
               name: emoji.name,
-              id: emoji.id
+              id: emoji.id,
+              guildId: emoji.guildId
             }, "Formatted emoji");
 
+            // Test the emoji format directly
             const placeholder = `__EMOJI${placeholderCount++}__`;
             placeholders.set(placeholder, formattedEmoji);
             return placeholder;
@@ -383,6 +417,12 @@ export class EmojiService {
           // If emoji not found in cache, try case-sensitive match
           const exactEmoji = MODEL_CONFIG.emojiCache.get(emojiName);
           if (exactEmoji) {
+            logger.debug({ 
+              emojiName,
+              exactMatch: true,
+              emoji: exactEmoji 
+            }, "Found case-sensitive match");
+            
             this.trackEmojiUsage(emojiName);
             const formattedEmoji = exactEmoji.animated 
               ? `<a:${exactEmoji.name}:${exactEmoji.id}>`
@@ -393,6 +433,11 @@ export class EmojiService {
             return placeholder;
           }
 
+          logger.debug({ 
+            emojiName,
+            lowercaseName,
+            cacheKeys: Array.from(MODEL_CONFIG.emojiCache.keys())
+          }, "Emoji not found in cache");
           return fullMatch;
         });
       };
@@ -406,10 +451,18 @@ export class EmojiService {
           .replace(/:{3,}/g, "::") // Replace multiple colons with double colons
           .replace(/(\s|^):[\w-]*[^:\w-][\w-]*:(\s|$)/g, " "); // Remove invalid emoji patterns
 
-        // Restore preserved emojis
+        // Restore preserved emojis - make sure to escape special characters in the key
         placeholders.forEach((value, key) => {
-          cleaned = cleaned.replace(new RegExp(key, "g"), value);
+          const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          cleaned = cleaned.replace(new RegExp(escapedKey, "g"), () => value);
         });
+
+        logger.debug({
+          input,
+          cleaned,
+          placeholders: Array.from(placeholders.entries()),
+          placeholderCount: placeholders.size
+        }, "Cleanup text debug");
 
         return cleaned;
       };
