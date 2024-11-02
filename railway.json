@@ -8,6 +8,12 @@
     "startCommand": "npm start",
     "healthcheckPath": "/",
     "healthcheckTimeout": 100,
-    "restartPolicyType": "ON_FAILURE"
+    "restartPolicyType": "ON_FAILURE",
+    "volumes": [
+      {
+        "path": "/app/data",
+        "name": "bot-data"
+      }
+    ]
   }
 }
