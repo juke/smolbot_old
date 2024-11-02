@@ -367,6 +367,27 @@ export class EmojiService {
               ? `<a:${emoji.name}:${emoji.id}>`
               : `<:${emoji.name}:${emoji.id}>`;
             
+            logger.debug({
+              original: fullMatch,
+              formatted: formattedEmoji,
+              animated: emoji.animated,
+              name: emoji.name,
+              id: emoji.id
+            }, "Formatted emoji");
+
+            const placeholder = `__EMOJI${placeholderCount++}__`;
+            placeholders.set(placeholder, formattedEmoji);
+            return placeholder;
+          }
+
+          // If emoji not found in cache, try case-sensitive match
+          const exactEmoji = MODEL_CONFIG.emojiCache.get(emojiName);
+          if (exactEmoji) {
+            this.trackEmojiUsage(emojiName);
+            const formattedEmoji = exactEmoji.animated 
+              ? `<a:${exactEmoji.name}:${exactEmoji.id}>`
+              : `<:${exactEmoji.name}:${exactEmoji.id}>`;
+            
             const placeholder = `__EMOJI${placeholderCount++}__`;
             placeholders.set(placeholder, formattedEmoji);
             return placeholder;
