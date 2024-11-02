@@ -216,7 +216,7 @@ export class EmojiService {
     });
     
     // Track and format :emoji_name: patterns
-    const processedText = preservedText.replace(/:([\w-]+):?/g, (fullMatch, emojiName) => {
+    const processedText = preservedText.replace(/:([\w-]+):?([^\w-]|$)/g, (fullMatch, emojiName, trailingChar) => {
       // Try to find emoji with exact case first
       let emoji = MODEL_CONFIG.emojiCache.get(emojiName);
       
@@ -237,17 +237,17 @@ export class EmojiService {
         cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name),
         fullMatch,
         emojiDetails: emoji,
-        formattedEmoji: emoji ? `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>` : null
+        formattedEmoji: emoji ? `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>${trailingChar || ""}` : null
       }, "Processing emoji");
 
       if (emoji) {
         this.trackEmojiUsage(emoji.name.toLowerCase());
-        // Always ensure proper Discord emoji format with both colons
-        return `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>`;
+        // Always ensure proper Discord emoji format with both colons and preserve trailing character
+        return `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>${trailingChar || ""}`;
       }
       
-      // If no emoji found, return the original text with both colons
-      return `:${emojiName}:`;
+      // If no emoji found, return the original text with both colons and trailing character
+      return `:${emojiName}:${trailingChar || ""}`;
     });
     
     // Restore preserved emojis
