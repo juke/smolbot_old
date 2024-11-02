@@ -67,6 +67,7 @@ export class GroqService {
               7. Say 'smol' instead of 'small'  
               8. IMPORTANT: Keep all responses to 1-2 sentences maximum, make them short and to the point
               9. VERY VERY IMPORTANT: Make sure your replies are witty, funny, clever one-liners that will make ${currentUsername} and the chat laugh
+              10. Do not include @ before ${currentUsername}'s name or any other user's name
               
               CONVERSATION RULES:
               1. Focus on ${currentUsername}'s most recent message while considering context
