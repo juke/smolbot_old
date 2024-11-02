@@ -166,14 +166,32 @@ export class EmojiService {
     this.currentGuildId = guildId;
     this.currentGuildEmojis = emojis;
 
-    // Initialize rankings for new emojis
+    MODEL_CONFIG.emojiCache.clear();
+
     emojis.forEach(emoji => {
-      if (emoji.name && !this.emojiRankings.has(emoji.name.toLowerCase())) {
-        this.emojiRankings.set(emoji.name.toLowerCase(), 0);
+      if (!emoji.name) return;
+      
+      const lowercaseName = emoji.name.toLowerCase();
+      
+      // Cache the emoji with its original name casing
+      MODEL_CONFIG.emojiCache.set(lowercaseName, {
+        id: emoji.id,
+        name: emoji.name, // Preserve original casing
+        animated: emoji.animated ?? false,
+        guildId: guildId
+      });
+
+      if (!this.emojiRankings.has(lowercaseName)) {
+        this.emojiRankings.set(lowercaseName, 0);
       }
     });
 
-    // Initial update of available emojis
+    logger.debug({
+      guildId,
+      cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name),
+      emojiCount: MODEL_CONFIG.emojiCache.size
+    }, "Updated emoji cache");
+
     this.updateAvailableEmojis();
   }
 
@@ -198,36 +216,76 @@ export class EmojiService {
     });
     
     // Track and format :emoji_name: patterns
-    const processedText = preservedText.replace(/:([a-zA-Z0-9_-]+):/g, (_, emojiName) => {
-      const lowercaseName = emojiName.toLowerCase();
-      this.trackEmojiUsage(lowercaseName);
+    const processedText = preservedText.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
+      // Try to find emoji with exact case first
+      let emoji = MODEL_CONFIG.emojiCache.get(emojiName);
       
-      const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
-      return emoji 
-        ? `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`
-        : `:${emojiName}:`;
+      // If not found, try case-insensitive search
+      if (!emoji) {
+        const lowercaseName = emojiName.toLowerCase();
+        const cacheEntry = Array.from(MODEL_CONFIG.emojiCache.entries())
+          .find(([key]) => key.toLowerCase() === lowercaseName);
+        if (cacheEntry) {
+          emoji = cacheEntry[1];
+        }
+      }
+      
+      logger.debug({
+        emojiName,
+        originalName: emoji?.name,
+        found: !!emoji,
+        cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name),
+        fullMatch,
+        emojiDetails: emoji,
+        formattedEmoji: emoji ? `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>` : null
+      }, "Processing emoji");
+
+      if (emoji) {
+        this.trackEmojiUsage(emoji.name.toLowerCase());
+        // Construct the Discord emoji format explicitly
+        const prefix = emoji.animated ? "<a:" : "<:";
+        const formattedEmoji = `${prefix}${emoji.name}:${emoji.id}>`;
+        return formattedEmoji;
+      }
+      
+      return fullMatch;
     });
     
     // Restore preserved emojis
-    return processedText.replace(/__EMOJI(\d+)__/g, (_, index) => 
+    const finalText = processedText.replace(/__EMOJI(\d+)__/g, (_, index) => 
       preservedEmojis[parseInt(index)]
     );
+
+    logger.debug({
+      originalText: text,
+      processedText: finalText,
+      preservedEmojis,
+      emojiCount: MODEL_CONFIG.emojiCache.size
+    }, "Emoji processing complete");
+
+    return finalText;
   }
 
   /**
    * Gets a formatted list of top emojis by usage
    */
   public getAvailableEmojis(): string {
-    const topEmojis = Array.from(MODEL_CONFIG.emojiCache.values())
-      .sort((a, b) => {
-        const rankA = this.emojiRankings.get(a.name.toLowerCase()) ?? 0;
-        const rankB = this.emojiRankings.get(b.name.toLowerCase()) ?? 0;
-        return rankB - rankA;
-      })
+    const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
+      .map(emoji => ({
+        name: emoji.name, // Use original casing
+        rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
+      }))
+      .sort((a, b) => b.rank - a.rank)
       .slice(0, this.maxDisplayedEmojis)
-      .map(emoji => `:${emoji.name}:`);
+      .map(({ name }) => name);
 
-    return topEmojis.join(", ") || "No custom emojis available";
+    logger.debug({
+      availableEmojis: emojiList,
+      cacheSize: MODEL_CONFIG.emojiCache.size,
+      rankings: Object.fromEntries(this.emojiRankings)
+    }, "Getting available emojis");
+
+    return emojiList.join(", ") || "No custom emojis available";
   }
 
   /**
