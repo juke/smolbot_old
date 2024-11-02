@@ -9,8 +9,8 @@ import path from "path";
  * Service for managing emoji processing, caching, and popularity tracking
  */
 export class EmojiService {
-  private readonly dataDir = "./data";
-  private readonly rankingsPath = "./data/emoji-rankings.json";
+  private readonly dataDir: string;
+  private readonly rankingsPath: string;
   private emojiRankings: Map<string, number> = new Map();
   private readonly maxDisplayedEmojis = 15;
   private readonly saveInterval = 10 * 60 * 1000; // Save every 10 minutes
@@ -19,7 +19,14 @@ export class EmojiService {
   private currentGuildEmojis?: Collection<string, GuildEmoji>;
 
   constructor() {
-    // Ensure data directory and rankings file exist on startup
+    // Handle both local and Railway paths
+    this.dataDir = process.env.RAILWAY_ENVIRONMENT 
+      ? "/app/data"
+      : "./data";
+    
+    this.rankingsPath = path.join(this.dataDir, "emoji-rankings.json");
+
+    // Initialize data store
     void this.initializeDataStore();
     // Save rankings periodically
     setInterval(() => void this.saveRankings(), this.saveInterval);
@@ -35,6 +42,11 @@ export class EmojiService {
       // Create data directory if it doesn't exist
       await fs.mkdir(this.dataDir, { recursive: true });
       
+      logger.info({
+        dataDir: this.dataDir,
+        rankingsPath: this.rankingsPath
+      }, "Initializing data store");
+
       // Check if rankings file exists, create it if it doesn't
       try {
         await fs.access(this.rankingsPath);
@@ -43,12 +55,18 @@ export class EmojiService {
       } catch {
         // File doesn't exist, create it with empty rankings
         await fs.writeFile(this.rankingsPath, JSON.stringify({}, null, 2));
-        logger.info("Created new emoji rankings file");
+        logger.info({
+          path: this.rankingsPath
+        }, "Created new emoji rankings file");
         // Initialize empty rankings
         this.emojiRankings = new Map();
       }
     } catch (error) {
-      logger.error({ error }, "Failed to initialize data store");
+      logger.error({ 
+        error,
+        dataDir: this.dataDir,
+        rankingsPath: this.rankingsPath 
+      }, "Failed to initialize data store");
     }
   }
 
