@@ -35,9 +35,9 @@ export function handleModelFallback(error: unknown, modelType: "text" | "vision"
     
     // Reset to highest tier model after waiting
     if (modelType === "text") {
-      MODEL_CONFIG.currentTextModel = models[0];
+      MODEL_CONFIG.currentTextModel = models[0] as TextModel;
     } else {
-      MODEL_CONFIG.currentVisionModel = models[0];
+      MODEL_CONFIG.currentVisionModel = models[0] as VisionModel;
     }
     return true;
   }
