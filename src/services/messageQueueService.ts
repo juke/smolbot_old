@@ -147,12 +147,30 @@ export class MessageQueueService {
       
       const aiMessages = messageCacheService.buildAIMessages(channelMessages, queuedMessage.message.id);
       
+      // Generate response in background while showing typing
+      const responsePromise = groqService.generateResponse(aiMessages, currentUsername);
+      
       if (queuedMessage.message.channel.type === ChannelType.GuildText) {
+        // Initial "thinking" delay (1.5-2.5s)
+        const thinkingDelay = 1500 + Math.random() * 1000;
+        await new Promise(resolve => setTimeout(resolve, thinkingDelay));
+        
+        // Show typing, wait a bit (0.8-1.2s)
         await queuedMessage.message.channel.sendTyping();
+        const typingDelay = 800 + Math.random() * 400;
+        await new Promise(resolve => setTimeout(resolve, typingDelay));
       }
 
-      const responseText = await groqService.generateResponse(aiMessages, currentUsername);
+      // Wait for response to be ready
+      const responseText = await responsePromise;
       const processedResponse = emojiService.processEmojiText(responseText);
+      
+      if (queuedMessage.message.channel.type === ChannelType.GuildText) {
+        // Final "typing" delay based on message length (0.5-1.5s)
+        const finalDelay = Math.min(500 + processedResponse.length * 10, 1500);
+        await queuedMessage.message.channel.sendTyping();
+        await new Promise(resolve => setTimeout(resolve, finalDelay));
+      }
       
       await queuedMessage.message.reply({
         content: processedResponse,
