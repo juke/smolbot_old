@@ -1,6 +1,14 @@
 import { Message } from "discord.js";
 
 /**
+ * Represents an image description with brief and optional detailed analysis
+ */
+export interface ImageDescription {
+  brief: string;
+  detailed?: string;
+}
+
+/**
  * Represents a cached message with additional metadata
  */
 export interface CachedMessage {
@@ -10,18 +18,12 @@ export interface CachedMessage {
   authorDisplayName: string;
   content: string;
   timestamp: Date;
-  imageDescriptions: {
-    brief: string;
-    detailed?: string;
-  }[];
+  imageDescriptions: ImageDescription[];
   referencedMessage?: {
     id: string;
     content: string;
     authorDisplayName: string;
-    imageDescriptions: {
-      brief: string;
-      detailed?: string;
-    }[];
+    imageDescriptions: ImageDescription[];
   };
 }
 
@@ -39,7 +41,7 @@ export interface AIMessage {
  */
 export type TextModel = 
   | "llama-3.2-90b-text-preview"
-  | "llama-3.1-70b-versatile"
+  | "llama-3.2-11b-text-preview"
   | "llama-3.1-8b-instant";
 
 /**

@@ -45,7 +45,7 @@ SmolBot is a sophisticated Discord bot designed to engage in natural conversatio
 - Uses Groq API for text and vision processing
 - Multiple model fallback system:
   - Primary: llama-3.2-90b-text-preview
-  - Fallback: llama-3.1-70b-versatile
+  - Fallback: llama-3.2-11b-text-preview
   - Emergency Fallback: llama-3.1-8b-instant
 - Intelligent retry mechanism with exponential backoff
 - Timeout handling for API calls
@@ -83,18 +83,3 @@ SmolBot is a sophisticated Discord bot designed to engage in natural conversatio
 - Emoji Management System
 
 This bot is particularly notable for its sophisticated handling of context, images, and emojis, while maintaining a consistent personality. The multi-tier fallback system and robust error handling make it particularly resilient to API issues or rate limiting.
-
-
-const messages = [
-  {
-    role: "user",
-    name: "John",
-    content: `Explain the use cases of fast language models.
-
-    [Referenced Message from SmolBot:]
-    "Fast language models are important because they can process information quickly, allowing for more efficient and responsive interactions."
-
-    [Image Description: A cute cat sitting on a couch.]`
-  },
-  // Additional messages...
-];
