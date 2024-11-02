@@ -216,7 +216,7 @@ export class EmojiService {
     });
     
     // Track and format :emoji_name: patterns
-    const processedText = preservedText.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
+    const processedText = preservedText.replace(/:([\w-]+):?/g, (fullMatch, emojiName) => {
       // Try to find emoji with exact case first
       let emoji = MODEL_CONFIG.emojiCache.get(emojiName);
       
@@ -237,18 +237,17 @@ export class EmojiService {
         cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name),
         fullMatch,
         emojiDetails: emoji,
-        formattedEmoji: emoji ? `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>` : null
+        formattedEmoji: emoji ? `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>` : null
       }, "Processing emoji");
 
       if (emoji) {
         this.trackEmojiUsage(emoji.name.toLowerCase());
-        // Construct the Discord emoji format explicitly
-        const prefix = emoji.animated ? "<a:" : "<:";
-        const formattedEmoji = `${prefix}${emoji.name}:${emoji.id}>`;
-        return formattedEmoji;
+        // Always ensure proper Discord emoji format with both colons
+        return `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>`;
       }
       
-      return fullMatch;
+      // If no emoji found, return the original text with both colons
+      return `:${emojiName}:`;
     });
     
     // Restore preserved emojis
