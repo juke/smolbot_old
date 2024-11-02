@@ -16,7 +16,7 @@ export const CONFIG = {
   GROQ_API_KEY: process.env.GROQ_API_KEY!,
   DISCORD_TOKEN: process.env.DISCORD_TOKEN!,
   PORT: parseInt(process.env.PORT || "8000", 10),
-  MAX_MESSAGES: 20,
+  MAX_MESSAGES: 15,
   QUEUE: {
     maxQueueSize: 5,
     processingDelay: 2500

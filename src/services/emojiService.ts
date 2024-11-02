@@ -9,8 +9,8 @@ import path from "path";
  * Service for managing emoji processing, caching, and popularity tracking
  */
 export class EmojiService {
-  private readonly dataDir = "./data";
-  private readonly rankingsPath = "./data/emoji-rankings.json";
+  private readonly dataDir = "/data";
+  private readonly rankingsPath = "/data/emoji-rankings.json";
   private emojiRankings: Map<string, number> = new Map();
   private readonly maxDisplayedEmojis = 15;
   private readonly saveInterval = 10 * 60 * 1000; // Save every 10 minutes
