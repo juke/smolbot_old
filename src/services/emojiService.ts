@@ -26,6 +26,17 @@ export class EmojiService {
     
     this.rankingsPath = path.join(this.dataDir, "emoji-rankings.json");
 
+    // Log environment info
+    logger.info({
+      environment: process.env.RAILWAY_ENVIRONMENT ? 'railway' : 'local',
+      dataDir: this.dataDir,
+      rankingsPath: this.rankingsPath,
+      uid: process.getuid?.(),
+      gid: process.getgid?.(),
+      cwd: process.cwd(),
+      volumes: process.env.RAILWAY_VOLUME_MOUNTS
+    }, "Initializing EmojiService");
+
     // Initialize data store
     void this.initializeDataStore();
     // Save rankings periodically
@@ -40,33 +51,81 @@ export class EmojiService {
   private async initializeDataStore(): Promise<void> {
     try {
       // Create data directory if it doesn't exist
-      await fs.mkdir(this.dataDir, { recursive: true });
-      
-      logger.info({
-        dataDir: this.dataDir,
-        rankingsPath: this.rankingsPath
-      }, "Initializing data store");
-
-      // Check if rankings file exists, create it if it doesn't
       try {
-        await fs.access(this.rankingsPath);
-        // Load existing rankings
-        await this.loadRankings();
-      } catch {
-        // File doesn't exist, create it with empty rankings
-        await fs.writeFile(this.rankingsPath, JSON.stringify({}, null, 2));
+        await fs.mkdir(this.dataDir, { recursive: true });
+        logger.info({
+          dataDir: this.dataDir,
+        }, "Created/verified data directory");
+      } catch (mkdirError) {
+        logger.error({ 
+          error: mkdirError,
+          dataDir: this.dataDir 
+        }, "Failed to create data directory");
+      }
+
+      // Check if rankings file exists
+      try {
+        await fs.access(this.rankingsPath, fs.constants.R_OK | fs.constants.W_OK);
         logger.info({
           path: this.rankingsPath
-        }, "Created new emoji rankings file");
-        // Initialize empty rankings
-        this.emojiRankings = new Map();
+        }, "Rankings file exists and is accessible");
+      } catch (accessError) {
+        logger.info({
+          path: this.rankingsPath,
+          error: accessError
+        }, "Rankings file does not exist or is not accessible");
       }
-    } catch (error) {
+
+      // Try to load or create rankings file
+      try {
+        const fileStats = await fs.stat(this.rankingsPath).catch(() => null);
+        
+        if (!fileStats) {
+          // File doesn't exist, create it
+          await fs.writeFile(this.rankingsPath, JSON.stringify({}, null, 2), {
+            mode: 0o666 // Set read/write permissions
+          });
+          logger.info({
+            path: this.rankingsPath
+          }, "Created new emoji rankings file");
+          this.emojiRankings = new Map();
+        } else {
+          // File exists, try to load it
+          const data = await fs.readFile(this.rankingsPath, "utf-8");
+          const rankings = JSON.parse(data);
+          this.emojiRankings = new Map(Object.entries(rankings));
+          logger.info({
+            rankingsCount: this.emojiRankings.size,
+            path: this.rankingsPath
+          }, "Loaded emoji rankings");
+        }
+      } catch (fileError: any) {
+        logger.error({ 
+          error: {
+            message: fileError.message,
+            code: fileError.code,
+            stack: fileError.stack
+          },
+          path: this.rankingsPath 
+        }, "Failed to create/load rankings file");
+        
+        // Fallback to in-memory rankings
+        this.emojiRankings = new Map();
+        logger.info("Falling back to in-memory emoji rankings");
+      }
+    } catch (error: any) {
       logger.error({ 
-        error,
+        error: {
+          message: error.message,
+          code: error.code,
+          stack: error.stack
+        },
         dataDir: this.dataDir,
         rankingsPath: this.rankingsPath 
       }, "Failed to initialize data store");
+      
+      // Ensure we have a working rankings map even if everything fails
+      this.emojiRankings = new Map();
     }
   }
 
