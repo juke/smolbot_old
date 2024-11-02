@@ -199,70 +199,35 @@ export class EmojiService {
    * Processes text to properly format any emoji references and track usage
    */
   public processEmojiText(text: string): string {
-    // Handle already formatted Discord emojis
-    const discordEmojiPattern = /(<a?:[\w-]+:\d+>)/g;
+    // First, preserve any already formatted Discord emojis (both static and animated)
+    const formattedEmojiPattern = /<(a)?:[\w-]+:\d+>/g;
     const preservedEmojis: string[] = [];
     
-    // Track emoji usage from formatted emojis
-    const formattedMatches = text.matchAll(/<a?:(\w+):\d+>/g);
-    for (const match of formattedMatches) {
-      this.trackEmojiUsage(match[1].toLowerCase());
-    }
-    
-    // Preserve existing formatted emojis
-    const preservedText = text.replace(discordEmojiPattern, (match) => {
+    const preservedText = text.replace(formattedEmojiPattern, (match) => {
       preservedEmojis.push(match);
       return `__EMOJI${preservedEmojis.length - 1}__`;
     });
-    
-    // Track and format :emoji_name: patterns
-    const processedText = preservedText.replace(/:([\w-]+):?([^\w-]|$)/g, (fullMatch, emojiName, trailingChar) => {
-      // Try to find emoji with exact case first
-      let emoji = MODEL_CONFIG.emojiCache.get(emojiName);
-      
-      // If not found, try case-insensitive search
-      if (!emoji) {
-        const lowercaseName = emojiName.toLowerCase();
-        const cacheEntry = Array.from(MODEL_CONFIG.emojiCache.entries())
-          .find(([key]) => key.toLowerCase() === lowercaseName);
-        if (cacheEntry) {
-          emoji = cacheEntry[1];
-        }
-      }
-      
-      logger.debug({
-        emojiName,
-        originalName: emoji?.name,
-        found: !!emoji,
-        cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name),
-        fullMatch,
-        emojiDetails: emoji,
-        formattedEmoji: emoji ? `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>${trailingChar || ""}` : null
-      }, "Processing emoji");
+
+    // Process unformatted emoji patterns
+    const processedText = preservedText.replace(/:([\w-]+):?/g, (fullMatch, emojiName) => {
+      const lowercaseName = emojiName.toLowerCase();
+      const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
 
       if (emoji) {
-        this.trackEmojiUsage(emoji.name.toLowerCase());
-        // Always ensure proper Discord emoji format with both colons and preserve trailing character
-        return `<${emoji.animated ? "a:" : ":"}${emoji.name}:${emoji.id}>${trailingChar || ""}`;
+        this.trackEmojiUsage(lowercaseName);
+        // Ensure proper prefix for animated vs static emojis
+        return emoji.animated 
+          ? `<a:${emoji.name}:${emoji.id}>`
+          : `<:${emoji.name}:${emoji.id}>`;
       }
-      
-      // If no emoji found, return the original text with both colons and trailing character
-      return `:${emojiName}:${trailingChar || ""}`;
+
+      return fullMatch.endsWith(':') ? fullMatch : `${fullMatch}:`;
     });
-    
+
     // Restore preserved emojis
-    const finalText = processedText.replace(/__EMOJI(\d+)__/g, (_, index) => 
+    return processedText.replace(/__EMOJI(\d+)__/g, (_, index) => 
       preservedEmojis[parseInt(index)]
     );
-
-    logger.debug({
-      originalText: text,
-      processedText: finalText,
-      preservedEmojis,
-      emojiCount: MODEL_CONFIG.emojiCache.size
-    }, "Emoji processing complete");
-
-    return finalText;
   }
 
   /**

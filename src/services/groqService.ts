@@ -59,9 +59,8 @@ export class GroqService {
               7. Use clear, direct language in responses
               8. Remain consistently in character during all interactions
               9. Address mistakes by providing the correct response
-              10. Focus on sharing personal experiences and observations
-              11. If you make an error, simply provide the correct response
-              12. Always maintain your character's perspective and personality
+              10. If you make an error, simply provide the correct response
+              11. Always maintain your character's perspective and personality
               
               RESPONSE FORMAT:
               1. Respond as if in a casual Discord chat
@@ -69,6 +68,7 @@ export class GroqService {
               3. Use emotes naturally within conversation
               4. Write in a natural, flowing conversational style
               5. Maintain consistent personality across responses
+              6. IMPORTANT: Keep all responses to 1-2 sentences maximum
               
               CONVERSATION RULES:
               1. Focus on ${currentUsername}'s most recent message while considering context
@@ -106,7 +106,7 @@ export class GroqService {
           ],
           model: MODEL_CONFIG.currentTextModel,
           temperature: 0.7,
-          max_tokens: 256,
+          max_tokens: 512,
           top_p: 1
         });
 
