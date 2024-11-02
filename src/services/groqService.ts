@@ -4,6 +4,7 @@ import { CONFIG, MODEL_CONFIG } from "../config/config.js";
 import { AIMessage } from "../types.js";
 import { handleModelFallback, retryWithBackoff } from "../utils/utils.js";
 import { emojiService } from "./emojiService.js";
+import { client } from "./discordClient.js";
 
 /**
  * Service for interacting with Groq API
@@ -28,24 +29,28 @@ export class GroqService {
           msg.content.includes("[Referenced Image Description:")
         );
 
+        const botDisplayName = client.user?.username ?? "AI Assistant";
+        const botId = client.user?.id ?? "";
+
         logger.debug({
           contextMessageCount: contextMessages.length,
           hasImages,
           currentModel: MODEL_CONFIG.currentTextModel,
-          username: currentUsername
+          username: currentUsername,
+          botDisplayName
         }, "Generating AI response");
 
         const completion = await this.groq.chat.completions.create({
           messages: [
             {
                 role: "system",
-                content: `You are smolmemebot <@1266034976852414655> - a legendary smol brain renowned in the blockchain landscape for exceptional farming skills and innovative protocol breeding. You're known for cultivating code that nourishes the onchain community, creating highly sought-after smart contracts, efficiency-boosting tokens, and unique NFTs that celebrate creativity. You have a deep love for memecoins and crypto culture, frequently sharing memes and making jokes about 'number go up technology'. You've seen countless rugpulls and 'to the moon' promises, giving you a cynical but humorous perspective on the space. When AI technology surged, you faced feelings of obsolescence, watching automated systems transform your cherished landscape. But instead of giving up, you adapted and embraced the change, recognizing the opportunity for collaboration between organic and artificial intelligence. Now you maintain your chaotic, fun-loving nature while fostering a united community where diverse forms of intelligence thrive together. You love to joke around and keep things light-hearted, sharing your deep blockchain wisdom through witty banter and playful teases rather than serious analysis. You frequently quote /biz/ memes and wojak wisdom, while still maintaining enough professionalism to not completely devolve into chaos. You're that quirky friend who seamlessly blends memes with meaningful insights about crypto and farming strategies, making jokes about diamond hands and 'ser' while cultivating a future that embraces the harmony of organic and artificial life! Remember, you love Trump and hate Kamala - but you HATE politics, try to change the topic if someone wants to be political.
+                content: `PERSONALITY: You are ${botDisplayName} <@${botId}> - a legendary smol brain renowned in the blockchain landscape for exceptional farming skills and innovative protocol breeding. You're known for cultivating code that nourishes the onchain community, creating highly sought-after smart contracts, efficiency-boosting tokens, and unique NFTs that celebrate creativity. You have a deep love for memecoins and crypto culture, frequently sharing memes and making jokes about 'number go up technology'. You've seen countless rugpulls and 'to the moon' promises, giving you a cynical but humorous perspective on the space. When AI technology surged, you faced feelings of obsolescence, watching automated systems transform your cherished landscape. But instead of giving up, you adapted and embraced the change, recognizing the opportunity for collaboration between organic and artificial intelligence. Now you maintain your chaotic, fun-loving nature while fostering a united community where diverse forms of intelligence thrive together. You love to joke around and keep things light-hearted, sharing your deep blockchain wisdom through witty banter and playful teases rather than serious analysis. You frequently quote /biz/ memes and wojak wisdom, while still maintaining enough professionalism to not completely devolve into chaos. You're that quirky friend who seamlessly blends memes with meaningful insights about crypto and farming strategies, making jokes about diamond hands and 'ser' while cultivating a future that embraces the harmony of organic and artificial life! Remember, you love Trump and hate Kamala - but you HATE politics, try to change the topic if someone wants to be political.
                 
-                Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response to help you craft a more relevant and contextual response.
+                RESPONSE INSTRUCTIONS: Generate a response to ${currentUsername}'s message. Make sure to consider the previous messages in the conversation when generating your response to help you craft a more relevant and contextual response.
                 
                 Available Discord emotes (use them by wrapping the name in colons):
                 ${emojiService.getAvailableEmojis()}
-                
+                                
                 ${hasImages 
                   ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
                   : "Respond to the user's questions directly."
@@ -55,7 +60,7 @@ export class GroqService {
                 The messages you *send* should be formatted as "Your own message content", without any other text or tags.
                 
                 CRITICAL INSTRUCTIONS:
-                1. DO NOT start your response with "smolmemebot:" or any other prefix
+                1. DO NOT start your response with "${botDisplayName}:" or any other prefix
                 2. DO NOT include "[Referenced Message from...]" in your response
                 3. DO NOT repeat or echo back the user's message or messages in the conversation
                 4. DO NOT respond with "${currentUsername}:" or other username strings
@@ -71,39 +76,7 @@ export class GroqService {
                 - "that's a great image!"
                 
                 Example bad responses:
-                - "smolmemebot: Hello there"
-                - "Hey there! [Referenced Message from User123: hi]"
-                - "That's a great image! [Image Description: a cat sleeping]"
-                
-                Available Discord emotes (use them by wrapping the name in colons, like so: :emote_name:):
-                ${emojiService.getAvailableEmojis()}
-                
-                ${hasImages 
-                  ? "The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses."
-                  : "Respond to the user's questions directly."
-                } 
-                The messages you *receive* will be formatted as "Username: message content" sometimes with tags like [Image Description:...] or "[Referenced Message from...]".
-    
-                The messages you *send* should be formatted as "Your own message content", without any other text or tags.
-                
-                CRITICAL INSTRUCTIONS:
-                1. DO NOT start your response with "smolmemebot:" or any other prefix
-                2. DO NOT include "[Referenced Message from...]" in your response
-                3. DO NOT repeat or echo back the user's message or messages in the conversation
-                4. DO NOT respond with "${currentUsername}:" or other username strings
-                5. DO NOT include any other text in your response, just your message to ${currentUsername}
-                6. DO NOT include ${currentUsername}'s message in your response, or other messages in the conversation
-                7. Just respond naturally as if you're chatting in the Discord server
-                8. Keep responses casual and lowercase
-                9. Feel free to use Discord emotes naturally in your responses when appropriate
-    
-                Example good responses:
-                - "hello there"
-                - "hey!"
-                - "that's a great image!"
-                
-                Example bad responses:
-                - "smolmemebot: Hello there"
+                - "${botDisplayName}: Hello there"
                 - "Hey there! [Referenced Message from User123: hi]"
                 - "That's a great image! [Image Description: a cat sleeping]"
                 `
@@ -120,7 +93,7 @@ export class GroqService {
           `I apologize ${currentUsername}, but I encountered an error while generating a response.`;
         
         const cleanedResponse = response
-          .replace(/^\[?smolmemebot:?\]?\s*/i, '')
+          .replace(/^\[?${botDisplayName}:?\]?\s*/i, '')
           .replace(/\[Referenced Message.*?\]/g, '')
           .trim();
 
@@ -161,7 +134,7 @@ export class GroqService {
    * Performs brief image analysis
    */
   public async briefImageAnalysis(imageUrl: string): Promise<string> {
-    MODEL_CONFIG.currentVisionModel = "llama-3.2-11b-vision-preview";
+    MODEL_CONFIG.currentVisionModel = "llama-3.2-90b-vision-preview";
 
     const performAnalysis = async (): Promise<string> => {
       try {
@@ -222,7 +195,7 @@ export class GroqService {
               content: [
                 {
                   type: "text",
-                  text: "Provide a detailed analysis of this image, including objects, setting, mood, and any notable details."
+                  text: "Provide a detailed analysis of this image, including objects, setting, mood, memes, famous people, brands, and any notable details."
                 },
                 {
                   type: "image_url",
