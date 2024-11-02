@@ -29,6 +29,5 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-src/index_old.ts
-
 data/emoji-rankings.json
+src/index_old.ts

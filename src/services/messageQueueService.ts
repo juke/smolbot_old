@@ -193,21 +193,6 @@ export class MessageQueueService {
       error,
       processingTime: Date.now() - startTime
     }, "Error processing queued message");
-    
-    try {
-      const username = queuedMessage.message.member?.displayName ?? 
-        queuedMessage.message.author.username;
-      await queuedMessage.message.reply({
-        content: `Sorry ${username}, I encountered an error while processing your message.`,
-        failIfNotExists: false
-      });
-    } catch (sendError) {
-      logger.error({ 
-        channelId: queuedMessage.message.channel.id,
-        messageId: queuedMessage.message.id,
-        sendError 
-      }, "Failed to send error message to user");
-    }
   }
 }
 

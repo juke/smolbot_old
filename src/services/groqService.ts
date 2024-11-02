@@ -110,9 +110,11 @@ export class GroqService {
           top_p: 1
         });
 
-        const response = completion.choices[0]?.message?.content ?? 
-          `I apologize ${currentUsername}, but I encountered an error while generating a response.`;
-        
+        const response = completion.choices[0]?.message?.content;
+        if (!response) {
+          throw new Error("No response received from model");
+        }
+
         const cleanedResponse = response
           .replace(/^\[?${botDisplayName}:?\]?\s*/i, '')
           .replace(/\[Referenced Message.*?\]/g, '')
@@ -147,7 +149,7 @@ export class GroqService {
         username: currentUsername,
         contextMessageCount: contextMessages.length
       }, "Failed to generate response after all retries");
-      return `Sorry ${currentUsername}, I encountered errors with all available models. Please try again later.`;
+      throw error;
     }
   }
 
@@ -196,7 +198,7 @@ export class GroqService {
       return await retryWithBackoff(performAnalysis);
     } catch (error) {
       logger.error({ imageUrl, error }, "Failed to analyze image after all retries");
-      return "Failed to analyze image.";
+      throw error;
     }
   }
 
@@ -245,7 +247,7 @@ export class GroqService {
       return await retryWithBackoff(performDetailedAnalysis);
     } catch (error) {
       logger.error({ imageUrl, error }, "Failed to perform detailed image analysis after all retries");
-      return "Failed to analyze image in detail.";
+      throw error;
     }
   }
 }
