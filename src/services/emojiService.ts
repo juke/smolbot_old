@@ -9,8 +9,8 @@ import path from "path";
  * Service for managing emoji processing, caching, and popularity tracking
  */
 export class EmojiService {
-  private readonly dataDir = "/data";
-  private readonly rankingsPath = "/data/emoji-rankings.json";
+  private readonly dataDir = "./data";
+  private readonly rankingsPath = "./data/emoji-rankings.json";
   private emojiRankings: Map<string, number> = new Map();
   private readonly maxDisplayedEmojis = 15;
   private readonly saveInterval = 10 * 60 * 1000; // Save every 10 minutes
@@ -38,14 +38,15 @@ export class EmojiService {
       // Check if rankings file exists, create it if it doesn't
       try {
         await fs.access(this.rankingsPath);
+        // Load existing rankings
+        await this.loadRankings();
       } catch {
         // File doesn't exist, create it with empty rankings
         await fs.writeFile(this.rankingsPath, JSON.stringify({}, null, 2));
         logger.info("Created new emoji rankings file");
+        // Initialize empty rankings
+        this.emojiRankings = new Map();
       }
-      
-      // Load rankings after ensuring file exists
-      await this.loadRankings();
     } catch (error) {
       logger.error({ error }, "Failed to initialize data store");
     }
@@ -57,39 +58,26 @@ export class EmojiService {
   private updateAvailableEmojis(): void {
     if (!this.currentGuildId || !this.currentGuildEmojis) return;
 
-    MODEL_CONFIG.emojiCache.clear();
-    
-    // Get top 15 emojis based on rankings
-    const topEmojis = Array.from(this.currentGuildEmojis.values())
-      .filter(emoji => emoji.name)
-      .sort((a, b) => {
-        const rankA = this.emojiRankings.get(a.name?.toLowerCase() ?? "") ?? 0;
-        const rankB = this.emojiRankings.get(b.name?.toLowerCase() ?? "") ?? 0;
-        return rankB - rankA;
-      })
-      .slice(0, this.maxDisplayedEmojis);
-
-    // Cache top emojis
-    topEmojis.forEach(emoji => {
+    // Don't clear the cache, just update it
+    this.currentGuildEmojis.forEach(emoji => {
       if (!emoji.name) return;
       
-      MODEL_CONFIG.emojiCache.set(emoji.name.toLowerCase(), {
-        id: emoji.id,
-        name: emoji.name,
-        animated: emoji.animated ?? false,
-        guildId: this.currentGuildId!
-      });
+      const lowercaseName = emoji.name.toLowerCase();
+      if (!MODEL_CONFIG.emojiCache.has(lowercaseName)) {
+        MODEL_CONFIG.emojiCache.set(lowercaseName, {
+          id: emoji.id,
+          name: emoji.name,
+          animated: emoji.animated ?? false,
+          guildId: this.currentGuildId!
+        });
+      }
     });
-    
+
     logger.debug({ 
       guildId: this.currentGuildId,
       cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.keys()),
-      topRankings: Object.fromEntries(
-        Array.from(this.emojiRankings.entries())
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, this.maxDisplayedEmojis)
-      )
-    }, "Updated available emojis based on rankings");
+      cacheSize: MODEL_CONFIG.emojiCache.size
+    }, "Updated available emojis");
   }
 
   /**
@@ -166,8 +154,7 @@ export class EmojiService {
     this.currentGuildId = guildId;
     this.currentGuildEmojis = emojis;
 
-    MODEL_CONFIG.emojiCache.clear();
-
+    // Don't clear the cache, just update/add new emojis
     emojis.forEach(emoji => {
       if (!emoji.name) return;
       
@@ -175,7 +162,7 @@ export class EmojiService {
       
       MODEL_CONFIG.emojiCache.set(lowercaseName, {
         id: emoji.id,
-        name: lowercaseName,
+        name: emoji.name, // Keep original name for display
         animated: emoji.animated ?? false,
         guildId: guildId
       });
@@ -185,20 +172,17 @@ export class EmojiService {
       }
     });
 
-    logger.debug({
-      guildId,
-      cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name),
-      emojiCount: MODEL_CONFIG.emojiCache.size
-    }, "Updated emoji cache");
-
-    this.updateAvailableEmojis();
+    // Only update available emojis if cache is empty
+    if (MODEL_CONFIG.emojiCache.size === 0) {
+      this.updateAvailableEmojis();
+    }
   }
 
   /**
    * Processes text to properly format any emoji references and track usage
    */
   public processEmojiText(text: string): string {
-    // First, preserve any already formatted Discord emojis
+    // First, preserve any properly formatted emojis
     const formattedEmojiPattern = /<(a)?:[\w-]+:\d+>/g;
     const preservedEmojis: string[] = [];
     
@@ -209,12 +193,16 @@ export class EmojiService {
 
     // Process unformatted emoji patterns
     const processedText = preservedText.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
+      // Don't process if emojiName contains any emoji formatting
+      if (emojiName.includes('<') || emojiName.includes('>')) {
+        return fullMatch;
+      }
+
       const lowercaseName = emojiName.toLowerCase();
       const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
 
       if (emoji) {
         this.trackEmojiUsage(lowercaseName);
-        // Format with proper Discord emoji syntax
         return emoji.animated 
           ? `<a:${emoji.name}:${emoji.id}>`
           : `<:${emoji.name}:${emoji.id}>`;
@@ -240,13 +228,13 @@ export class EmojiService {
       }))
       .sort((a, b) => b.rank - a.rank)
       .slice(0, this.maxDisplayedEmojis)
-      .map(({ name }) => name);
-
-    logger.debug({
-      availableEmojis: emojiList,
-      cacheSize: MODEL_CONFIG.emojiCache.size,
-      rankings: Object.fromEntries(this.emojiRankings)
-    }, "Getting available emojis");
+      .map(({ name }) => {
+        const emoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
+        if (!emoji) return name;
+        return emoji.animated 
+          ? `<a:${emoji.name}:${emoji.id}>`
+          : `<:${emoji.name}:${emoji.id}>`;
+      });
 
     return emojiList.join(", ") || "No custom emojis available";
   }

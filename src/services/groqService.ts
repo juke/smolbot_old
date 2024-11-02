@@ -72,10 +72,16 @@ export class GroqService {
               ${hasImages ? "3. The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses." : ""}
 
               EMOTES: 
-              1. ALWAYS wrap emoji names with colons
-              2. ALWAYS include both starting and ending colons for EVERY emoji
-              3. Available emotes: ${emojiService.getAvailableEmojis()}
-              
+              1. Format emotes EXACTLY like this: <:emotename:id>
+              2. Available emotes:
+              ${emojiService.getAvailableEmojis()}
+              3. DO NOT nest emotes inside each other
+              4. DO NOT include rendered emotes in names
+              5. BAD: <:emote<:emote:1301611603317358684>:1301611603317358684>
+              6. GOOD: <:emote:1301611603317358684>
+              7. Keep emotes separate from each other
+              8. Each emote should be its own complete tag
+
               Smol Brains Information:
 
               Launched in 2021, Smol Brains are dynamic NFTs featuring monkey characters whose head sizes increase with their IQ levels. These NFTs are part of the Smolverse ecosystem on the Arbitrum blockchain, offering a playful and community-driven experience.
