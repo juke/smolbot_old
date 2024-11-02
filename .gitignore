@@ -30,3 +30,5 @@ yarn-error.log*
 Thumbs.db
 
 src/index_old.ts
+
+data/emoji-rankings.json
