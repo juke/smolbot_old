@@ -63,42 +63,44 @@ export class EmojiService {
         }, "Failed to create data directory");
       }
 
-      // Check if rankings file exists
-      try {
-        await fs.access(this.rankingsPath, fs.constants.R_OK | fs.constants.W_OK);
-        logger.info({
-          path: this.rankingsPath
-        }, "Rankings file exists and is accessible");
-      } catch (accessError) {
-        logger.info({
-          path: this.rankingsPath,
-          error: accessError
-        }, "Rankings file does not exist or is not accessible");
-      }
-
       // Try to load or create rankings file
       try {
-        const fileStats = await fs.stat(this.rankingsPath).catch(() => null);
+        const fileContent = await fs.readFile(this.rankingsPath, "utf-8").catch(() => "");
         
-        if (!fileStats) {
-          // File doesn't exist, create it
-          await fs.writeFile(this.rankingsPath, JSON.stringify({}, null, 2), {
-            mode: 0o666 // Set read/write permissions
-          });
-          logger.info({
-            path: this.rankingsPath
-          }, "Created new emoji rankings file");
-          this.emojiRankings = new Map();
-        } else {
-          // File exists, try to load it
-          const data = await fs.readFile(this.rankingsPath, "utf-8");
-          const rankings = JSON.parse(data);
-          this.emojiRankings = new Map(Object.entries(rankings));
-          logger.info({
-            rankingsCount: this.emojiRankings.size,
-            path: this.rankingsPath
-          }, "Loaded emoji rankings");
+        // Check if file is empty or invalid JSON
+        let rankings: Record<string, number> = {};
+        if (fileContent.trim()) {
+          try {
+            rankings = JSON.parse(fileContent);
+            // Validate the parsed content
+            if (typeof rankings !== "object" || rankings === null) {
+              throw new Error("Invalid rankings format");
+            }
+          } catch (parseError) {
+            logger.warn({ 
+              error: parseError,
+              content: fileContent.slice(0, 100) // Log first 100 chars for debugging
+            }, "Failed to parse rankings file, creating new one");
+            rankings = {};
+          }
         }
+
+        // Write/overwrite file with valid content
+        await fs.writeFile(
+          this.rankingsPath, 
+          JSON.stringify(rankings, null, 2), 
+          { 
+            encoding: "utf-8",
+            mode: 0o666 // Read/write for all
+          }
+        );
+
+        this.emojiRankings = new Map(Object.entries(rankings));
+        logger.info({
+          rankingsCount: this.emojiRankings.size,
+          path: this.rankingsPath
+        }, "Initialized emoji rankings");
+
       } catch (fileError: any) {
         logger.error({ 
           error: {
@@ -107,7 +109,7 @@ export class EmojiService {
             stack: fileError.stack
           },
           path: this.rankingsPath 
-        }, "Failed to create/load rankings file");
+        }, "Failed to handle rankings file");
         
         // Fallback to in-memory rankings
         this.emojiRankings = new Map();
