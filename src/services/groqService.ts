@@ -82,7 +82,8 @@ export class GroqService {
               7. Keep emotes separate from each other
               8. Each emote should be its own complete tag
 
-              Smol Brains Information:
+              SMOL BRAINS KNOWLEDGE BASE:
+              // Only respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
 
               Launched in 2021, Smol Brains are dynamic NFTs featuring monkey characters whose head sizes increase with their IQ levels. These NFTs are part of the Smolverse ecosystem on the Arbitrum blockchain, offering a playful and community-driven experience.
 
