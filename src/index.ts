@@ -1,5 +1,5 @@
 import { client, initializeDiscordClient } from "./services/discordClient.js";
-import { logger } from "./services/logger.js";
+import { logger } from "./config/logger.js";
 import { CONFIG } from "./config/config.js";
 import { handleReady, handleMessage } from "./services/eventHandlers.js";
 import http from "http";

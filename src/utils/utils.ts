@@ -1,4 +1,4 @@
-import { logger } from "../services/logger.js";
+import { logger } from "../config/logger.js";
 import { TextModel, VisionModel } from "../types.js";
 import { MODEL_CONFIG } from "../config/config.js";
 

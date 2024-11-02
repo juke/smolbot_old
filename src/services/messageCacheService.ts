@@ -1,6 +1,6 @@
 import { Message as DiscordMessage } from "discord.js";
 import { CachedMessage, AIMessage, ImageDescription } from "../types.js";
-import { logger } from "./logger.js";
+import { logger } from "../config/logger.js";
 import { CONFIG } from "../config/config.js";
 import { client } from "./discordClient.js";
 import { groqService } from "./groqService.js";

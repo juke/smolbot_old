@@ -1,6 +1,6 @@
 import { Message as DiscordMessage, ChannelType } from "discord.js";
 import { MessageQueue, QueuedMessage } from "../types.js";
-import { logger } from "./logger.js";
+import { logger } from "../config/logger.js";
 import { CONFIG } from "../config/config.js";
 import { client } from "./discordClient.js";
 import { messageCacheService } from "./messageCacheService.js";

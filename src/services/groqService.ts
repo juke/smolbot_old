@@ -1,5 +1,5 @@
 import { Groq } from "groq-sdk";
-import { logger } from "./logger.js";
+import { logger } from "../config/logger.js";
 import { CONFIG, MODEL_CONFIG } from "../config/config.js";
 import { AIMessage } from "../types.js";
 import { handleModelFallback, retryWithBackoff } from "../utils/utils.js";

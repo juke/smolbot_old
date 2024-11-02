@@ -1,5 +1,5 @@
 import { Message as DiscordMessage, GuildEmoji } from "discord.js";
-import { logger } from "./logger.js";
+import { logger } from "../config/logger.js";
 import { client } from "./discordClient.js";
 import { messageQueueService } from "./messageQueueService.js";
 import { messageCacheService } from "./messageCacheService.js";

@@ -1,6 +1,6 @@
 import { Collection, GuildEmoji } from "discord.js";
 import { CachedEmoji } from "../types.js";
-import { logger } from "./logger.js";
+import { logger } from "../config/logger.js";
 import { MODEL_CONFIG } from "../config/config.js";
 import fs from "fs/promises";
 import path from "path";

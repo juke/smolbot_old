@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits } from "discord.js";
-import { logger } from "./logger.js";
+import { logger } from "../config/logger.js";
 import { CONFIG } from "../config/config.js";
 
 /**
