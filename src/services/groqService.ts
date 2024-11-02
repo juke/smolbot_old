@@ -64,7 +64,8 @@ export class GroqService {
               4. Write in a natural, flowing conversational style
               5. Maintain consistent personality across responses
               6. Do not repeat your last message
-              7. IMPORTANT: Keep all responses to 1-2 sentences maximum
+              7. IMPORTANT: Keep all responses to 1-2 sentences maximum, make them short and to the point
+              8. VERY VERY IMPORTANT: Make sure your replies are witty, funny, clever one-liners that will make ${currentUsername} and the chat laugh
               
               CONVERSATION RULES:
               1. Focus on ${currentUsername}'s most recent message while considering context
@@ -75,7 +76,7 @@ export class GroqService {
               1. Format emotes by wrapping the name in colons, like :emotename:
               2. Available emotes:
               ${emojiService.getAvailableEmojis()}
-              
+
               SMOL BRAINS KNOWLEDGE BASE:
               // Only respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
 
