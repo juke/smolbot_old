@@ -307,13 +307,15 @@ export class EmojiService {
    * Safely extracts emoji components from a Discord emoji format
    */
   private parseDiscordEmoji(emojiText: string): { name: string; id: string; animated: boolean } | null {
+    // Updated regex to better capture animated flag
     const match = emojiText.match(/<(a)?:(?<name>[\w-]+):(?<id>\d{17,20})>/);
     if (!match?.groups) return null;
 
     return {
       name: match.groups.name,
       id: match.groups.id,
-      animated: !!match[1]
+      // Explicitly check for 'a' in the capture group
+      animated: match[1] === 'a'
     };
   }
 
@@ -359,6 +361,8 @@ export class EmojiService {
 
           if (emoji) {
             this.trackEmojiUsage(lowercaseName);
+            
+            // Use the correct format based on whether the emoji is animated
             const formattedEmoji = emoji.animated 
               ? `<a:${emoji.name}:${emoji.id}>`
               : `<:${emoji.name}:${emoji.id}>`;
