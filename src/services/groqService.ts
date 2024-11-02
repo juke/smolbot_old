@@ -73,9 +73,11 @@ export class GroqService {
               ${hasImages ? "3. The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses." : ""}
 
               EMOTES: 
-              1. Format emotes by wrapping the name in colons, like :emotename:
-              2. Available emotes:
+              Available emotes:
               ${emojiService.getAvailableEmojis()}
+
+              1. Format emotes by wrapping the name in colons, like :emotename:
+              2. Only use emotes from the provided list above - do not invent new ones or use unlisted emotes
 
               SMOL BRAINS KNOWLEDGE BASE:
               // Only respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
