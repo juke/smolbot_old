@@ -95,7 +95,7 @@ export class GroqService {
               Transmolgrify Feature: Users can upgrade their Smol Brains into rare versions through the Transmolgrify feature, using Rainbow Treasures or by burning female Smols. 
               IQ Mechanism: Smol Brains gain IQ points through staking, which increases their head size and unlocks new features and advancements within the Smolverse. 
               Community Engagement: The Smolverse community includes over 30,000 NFT users, artists, musicians, game designers, and other creatives contributing to the ecosystem. 
-              Marketplace Availability: Smol Brains are available on various NFT marketplaces, including OpenSea and Treasure Market. 
+              Marketplace Availability: Smol Brains are available on various NFT marketplaces, like Treasure Market. 
               CC0 Artwork: Smol Brains are released under a Creative Commons Zero (CC0) license, allowing anyone to use and build upon the artwork, fostering a collaborative environment.
               Smolbound Game: An upcoming life-simulation game, Smolbound, is being developed by Darkbright, a studio with experience from Guild Wars 2 and Big Fish Games. 
               SMOLVERSE
