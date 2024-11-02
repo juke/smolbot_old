@@ -122,6 +122,8 @@ export class GroqService {
         const cleanedResponse = response
           .replace(/^\[?${botDisplayName}:?\]?\s*/i, '')
           .replace(/\[Referenced Message.*?\]/g, '')
+          .replace(/\[Referenced Image Description.*?\]/g, '')
+          .replace(/\[Image Description.*?\]/g, '')
           .trim();
 
         logger.info({ 
