@@ -125,8 +125,20 @@ export class MessageCacheService {
    * Converts cached messages to AI-friendly format
    */
   public buildAIMessages(messages: CachedMessage[], currentMessageId?: string): AIMessage[] {
+    const MAX_MESSAGE_LENGTH = 500; // Characters
+
+    /**
+     * Helper to truncate text with ellipsis
+     */
+    const truncateText = (text: string, maxLength: number): string => {
+      if (text.length <= maxLength) return text;
+      return `${text.slice(0, maxLength - 3)}...`;
+    };
+
     return messages.map((msg): AIMessage => {
-      const contentParts = [`${msg.authorDisplayName}: ${msg.content}`];
+      const contentParts = [
+        `${msg.authorDisplayName}: ${truncateText(msg.content, MAX_MESSAGE_LENGTH)}`
+      ];
       
       if (msg.imageDescriptions.length > 0) {
         msg.imageDescriptions.forEach((desc: ImageDescription) => {
@@ -140,7 +152,9 @@ export class MessageCacheService {
       
       if (msg.referencedMessage) {
         contentParts.push(
-          `[Referenced Message from ${msg.referencedMessage.authorDisplayName}: ${msg.referencedMessage.content}]`
+          `[Referenced Message from ${msg.referencedMessage.authorDisplayName}: ${
+            truncateText(msg.referencedMessage.content, MAX_MESSAGE_LENGTH)
+          }]`
         );
         msg.referencedMessage.imageDescriptions.forEach((desc: ImageDescription) => {
           if (msg.id === currentMessageId && desc.detailed) {
