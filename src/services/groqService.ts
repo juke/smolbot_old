@@ -88,8 +88,14 @@ export class GroqService {
               7. NO explanation of formatting
               8. ONLY include your direct response
 
-              EMOTES: Use any of these emotes by wrapping the name in colons (e.g. :emote_name:):
-              ${emojiService.getAvailableEmojis()}
+              EMOTES: 
+              1. ALWAYS wrap emoji names with colons, even in lists
+              2. Correct: ":pepeCup:, :smolBers:, :wew:"
+              3. Incorrect: "pepeCup, smolBers, wew"
+              4. Available emotes: ${emojiService.getAvailableEmojis()}
+              5. Case doesn't matter - :EMOTENAME: and :emotename: both work
+              6. Don't modify or create new emotes - only use the ones listed above
+              7. ALWAYS include both starting and ending colons for EVERY emoji
 
               Smol Brains Information:
               Smol Brains are dynamic NFTs featuring monkey characters whose head sizes increase with their IQ levels. These NFTs are part of the Smolverse ecosystem on the Arbitrum blockchain, offering a playful and community-driven experience. 

@@ -173,10 +173,9 @@ export class EmojiService {
       
       const lowercaseName = emoji.name.toLowerCase();
       
-      // Cache the emoji with its original name casing
       MODEL_CONFIG.emojiCache.set(lowercaseName, {
         id: emoji.id,
-        name: emoji.name, // Preserve original casing
+        name: lowercaseName,
         animated: emoji.animated ?? false,
         guildId: guildId
       });
@@ -199,7 +198,7 @@ export class EmojiService {
    * Processes text to properly format any emoji references and track usage
    */
   public processEmojiText(text: string): string {
-    // First, preserve any already formatted Discord emojis (both static and animated)
+    // First, preserve any already formatted Discord emojis
     const formattedEmojiPattern = /<(a)?:[\w-]+:\d+>/g;
     const preservedEmojis: string[] = [];
     
@@ -209,19 +208,19 @@ export class EmojiService {
     });
 
     // Process unformatted emoji patterns
-    const processedText = preservedText.replace(/:([\w-]+):?/g, (fullMatch, emojiName) => {
+    const processedText = preservedText.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
       const lowercaseName = emojiName.toLowerCase();
       const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
 
       if (emoji) {
         this.trackEmojiUsage(lowercaseName);
-        // Ensure proper prefix for animated vs static emojis
+        // Format with proper Discord emoji syntax
         return emoji.animated 
           ? `<a:${emoji.name}:${emoji.id}>`
           : `<:${emoji.name}:${emoji.id}>`;
       }
 
-      return fullMatch.endsWith(':') ? fullMatch : `${fullMatch}:`;
+      return fullMatch;
     });
 
     // Restore preserved emojis
@@ -236,7 +235,7 @@ export class EmojiService {
   public getAvailableEmojis(): string {
     const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
       .map(emoji => ({
-        name: emoji.name, // Use original casing
+        name: emoji.name,
         rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
       }))
       .sort((a, b) => b.rank - a.rank)
