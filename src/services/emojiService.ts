@@ -152,11 +152,6 @@ export class EmojiService {
       }
     });
 
-    logger.debug({ 
-      guildId: this.currentGuildId,
-      cachedEmojis: Array.from(MODEL_CONFIG.emojiCache.keys()),
-      cacheSize: MODEL_CONFIG.emojiCache.size
-    }, "Updated available emojis");
   }
 
   /**
@@ -258,45 +253,6 @@ export class EmojiService {
   }
 
   /**
-   * Processes text to properly format any emoji references and track usage
-   */
-  public processEmojiText(text: string): string {
-    // First, preserve any properly formatted emojis
-    const formattedEmojiPattern = /<(a)?:[\w-]+:\d+>/g;
-    const preservedEmojis: string[] = [];
-    
-    const preservedText = text.replace(formattedEmojiPattern, (match) => {
-      preservedEmojis.push(match);
-      return `__EMOJI${preservedEmojis.length - 1}__`;
-    });
-
-    // Process unformatted emoji patterns
-    const processedText = preservedText.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
-      // Don't process if emojiName contains any emoji formatting
-      if (emojiName.includes('<') || emojiName.includes('>')) {
-        return fullMatch;
-      }
-
-      const lowercaseName = emojiName.toLowerCase();
-      const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
-
-      if (emoji) {
-        this.trackEmojiUsage(lowercaseName);
-        return emoji.animated 
-          ? `<a:${emoji.name}:${emoji.id}>`
-          : `<:${emoji.name}:${emoji.id}>`;
-      }
-
-      return fullMatch;
-    });
-
-    // Restore preserved emojis
-    return processedText.replace(/__EMOJI(\d+)__/g, (_, index) => 
-      preservedEmojis[parseInt(index)]
-    );
-  }
-
-  /**
    * Gets a formatted list of top emojis by usage
    */
   public getAvailableEmojis(): string {
@@ -307,13 +263,7 @@ export class EmojiService {
       }))
       .sort((a, b) => b.rank - a.rank)
       .slice(0, this.maxDisplayedEmojis)
-      .map(({ name }) => {
-        const emoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
-        if (!emoji) return name;
-        return emoji.animated 
-          ? `<a:${emoji.name}:${emoji.id}>`
-          : `<:${emoji.name}:${emoji.id}>`;
-      });
+      .map(({ name }) => `:${name}:`);
 
     return emojiList.join(", ") || "No custom emojis available";
   }
@@ -330,6 +280,138 @@ export class EmojiService {
       topEmojis: Object.fromEntries(sortedRankings.slice(0, 10)),
       totalUsage: Array.from(this.emojiRankings.values()).reduce((a, b) => a + b, 0)
     };
+  }
+
+  /**
+   * Validates an emoji name with strict rules
+   */
+  private isValidEmojiName(name: string): boolean {
+    // Discord emoji name rules:
+    // - 2-32 characters
+    // - Only alphanumeric, underscores, and hyphens
+    // - No double underscores (Discord restriction)
+    // - No consecutive hyphens
+    // - Cannot start/end with hyphen or underscore
+    const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9-_]*[a-zA-Z0-9]$/;
+    return (
+      name.length >= 2 && 
+      name.length <= 32 && 
+      validPattern.test(name) &&
+      !name.includes("__") && // No double underscores
+      !name.includes("--") && // No double hyphens
+      !/-.*_|_.*-/.test(name) // No mix of hyphen and underscore
+    );
+  }
+
+  /**
+   * Safely extracts emoji components from a Discord emoji format
+   */
+  private parseDiscordEmoji(emojiText: string): { name: string; id: string; animated: boolean } | null {
+    const match = emojiText.match(/<(a)?:(?<name>[\w-]+):(?<id>\d{17,20})>/);
+    if (!match?.groups) return null;
+
+    return {
+      name: match.groups.name,
+      id: match.groups.id,
+      animated: !!match[1]
+    };
+  }
+
+  /**
+   * Processes text to properly format any emoji references and track usage
+   */
+  public processEmojiText(text: string): string {
+    if (!text) return "";
+    
+    try {
+      // Track all emoji placeholders to prevent nested processing
+      const placeholders: Map<string, string> = new Map();
+      let placeholderCount = 0;
+
+      // Step 1: Preserve properly formatted Discord emojis
+      const preserveDiscordEmojis = (input: string): string => {
+        return input.replace(/<(?:a)?:[\w-]+:\d{17,20}>/g, (match) => {
+          const parsed = this.parseDiscordEmoji(match);
+          if (!parsed) return match;
+
+          // Validate the emoji components
+          if (!this.isValidEmojiName(parsed.name)) return match;
+          if (!/^\d{17,20}$/.test(parsed.id)) return match;
+
+          const placeholder = `__EMOJI${placeholderCount++}__`;
+          placeholders.set(placeholder, match);
+          return placeholder;
+        });
+      };
+
+      // Step 2: Process unformatted emoji patterns
+      const processUnformattedEmojis = (input: string): string => {
+        // Handle :emoji: format
+        return input.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
+          // Skip if it's a placeholder
+          if (fullMatch.startsWith("__EMOJI")) return fullMatch;
+
+          // Basic validation
+          if (!this.isValidEmojiName(emojiName)) return fullMatch;
+
+          const lowercaseName = emojiName.toLowerCase();
+          const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
+
+          if (emoji) {
+            this.trackEmojiUsage(lowercaseName);
+            const formattedEmoji = emoji.animated 
+              ? `<a:${emoji.name}:${emoji.id}>`
+              : `<:${emoji.name}:${emoji.id}>`;
+            
+            const placeholder = `__EMOJI${placeholderCount++}__`;
+            placeholders.set(placeholder, formattedEmoji);
+            return placeholder;
+          }
+
+          return fullMatch;
+        });
+      };
+
+      // Step 3: Handle edge cases and cleanup
+      const cleanupText = (input: string): string => {
+        // Remove any malformed emoji patterns
+        let cleaned = input
+          .replace(/<:[\w-]+>/g, "") // Remove emojis without IDs
+          .replace(/<a?:[\w-]+:(?!\d{17,20}>)/g, "") // Remove emojis with invalid IDs
+          .replace(/:{3,}/g, "::") // Replace multiple colons with double colons
+          .replace(/(\s|^):[\w-]*[^:\w-][\w-]*:(\s|$)/g, " "); // Remove invalid emoji patterns
+
+        // Restore preserved emojis
+        placeholders.forEach((value, key) => {
+          cleaned = cleaned.replace(new RegExp(key, "g"), value);
+        });
+
+        return cleaned;
+      };
+
+      // Apply all processing steps
+      let processed = text;
+      processed = preserveDiscordEmojis(processed);
+      processed = processUnformattedEmojis(processed);
+      processed = cleanupText(processed);
+
+      logger.debug({
+        originalLength: text.length,
+        processedLength: processed.length,
+        emojiCount: placeholders.size
+      }, "Processed emoji text");
+
+      return processed;
+
+    } catch (error) {
+      logger.error({ 
+        error,
+        text: text.slice(0, 100) // Log first 100 chars for debugging
+      }, "Error processing emoji text");
+      
+      // Return original text if processing fails
+      return text;
+    }
   }
 }
 

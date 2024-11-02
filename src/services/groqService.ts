@@ -72,16 +72,10 @@ export class GroqService {
               ${hasImages ? "3. The conversation includes image descriptions. Use these descriptions to provide relevant and contextual responses." : ""}
 
               EMOTES: 
-              1. Format emotes EXACTLY like this: <:emotename:id>
+              1. Format emotes by wrapping the name in colons, like :emotename:
               2. Available emotes:
               ${emojiService.getAvailableEmojis()}
-              3. DO NOT nest emotes inside each other
-              4. DO NOT include rendered emotes in names
-              5. BAD: <:emote<:emote:1301611603317358684>:1301611603317358684>
-              6. GOOD: <:emote:1301611603317358684>
-              7. Keep emotes separate from each other
-              8. Each emote should be its own complete tag
-
+              
               SMOL BRAINS KNOWLEDGE BASE:
               // Only respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
 
