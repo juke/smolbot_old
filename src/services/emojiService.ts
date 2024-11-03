@@ -367,8 +367,8 @@ export class EmojiService {
     if (!text) return "";
     
     try {
-
-        // Track all emoji placeholders to prevent nested processing
+        // Create a unique prefix for this processing run to avoid collisions
+        const uniquePrefix = `__EMOJI_${Date.now()}_`;
         const placeholders: Map<string, string> = new Map();
         let placeholderCount = 0;
 
@@ -384,7 +384,7 @@ export class EmojiService {
 
                 this.trackEmojiUsage(parsed.name.toLowerCase(), isFromBot);
 
-                const placeholder = `__EMOJI${placeholderCount++}__`;
+                const placeholder = `${uniquePrefix}${placeholderCount++}`;
                 placeholders.set(placeholder, match);
                 return placeholder;
             });
@@ -398,11 +398,12 @@ export class EmojiService {
                 logger.debug({ 
                     fullMatch, 
                     emojiName,
-                    isFromBot
+                    isFromBot,
+                    cacheContents: Array.from(MODEL_CONFIG.emojiCache.keys())
                 }, "Processing emoji match");
 
-                // Skip if it's a placeholder
-                if (fullMatch.startsWith("__EMOJI")) {
+                // Skip if it's already a placeholder
+                if (fullMatch.startsWith(uniquePrefix)) {
                     logger.debug({ fullMatch }, "Skipping placeholder");
                     return fullMatch;
                 }
@@ -413,55 +414,31 @@ export class EmojiService {
                     return fullMatch;
                 }
 
+                // Try case-insensitive match first
                 const lowercaseName = emojiName.toLowerCase();
-                const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
+                let emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
+
+                // If not found, try exact match
+                if (!emoji) {
+                    emoji = MODEL_CONFIG.emojiCache.get(emojiName);
+                }
 
                 if (emoji) {
                     // Add debug logging before tracking
                     logger.debug({ 
-                        emojiName: lowercaseName,
+                        emojiName: emoji.name,
                         isFromBot,
-                        currentRanking: this.emojiRankings.get(lowercaseName)
-                    }, "Tracking emoji usage");
+                        currentRanking: this.emojiRankings.get(emoji.name.toLowerCase())
+                    }, "Found emoji in cache");
 
-                    this.trackEmojiUsage(lowercaseName, isFromBot);
+                    this.trackEmojiUsage(emoji.name.toLowerCase(), isFromBot);
                     
                     // Use the correct format based on whether the emoji is animated
                     const formattedEmoji = emoji.animated 
                         ? `<a:${emoji.name}:${emoji.id}>`
                         : `<:${emoji.name}:${emoji.id}>`;
                     
-                    logger.debug({
-                        original: fullMatch,
-                        formatted: formattedEmoji,
-                        animated: emoji.animated,
-                        name: emoji.name,
-                        id: emoji.id,
-                        guildId: emoji.guildId
-                    }, "Formatted emoji");
-
-                    // Test the emoji format directly
-                    const placeholder = `__EMOJI${placeholderCount++}__`;
-                    placeholders.set(placeholder, formattedEmoji);
-                    return placeholder;
-                }
-
-                // If emoji not found in cache, try case-sensitive match
-                const exactEmoji = MODEL_CONFIG.emojiCache.get(emojiName);
-                if (exactEmoji) {
-                    this.trackEmojiUsage(emojiName, isFromBot);
-                    
-                    logger.debug({ 
-                        emojiName,
-                        exactMatch: true,
-                        emoji: exactEmoji 
-                    }, "Found case-sensitive match");
-                    
-                    const formattedEmoji = exactEmoji.animated 
-                        ? `<a:${exactEmoji.name}:${exactEmoji.id}>`
-                        : `<:${exactEmoji.name}:${exactEmoji.id}>`;
-                    
-                    const placeholder = `__EMOJI${placeholderCount++}__`;
+                    const placeholder = `${uniquePrefix}${placeholderCount++}`;
                     placeholders.set(placeholder, formattedEmoji);
                     return placeholder;
                 }
@@ -477,40 +454,29 @@ export class EmojiService {
 
         // Step 3: Handle edge cases and cleanup
         const cleanupText = (input: string): string => {
-            // Remove any malformed emoji patterns
-            let cleaned = input
-                .replace(/<:[\w-]+>/g, "") // Remove emojis without IDs
-                .replace(/<a?:[\w-]+:(?!\d{17,20}>)/g, "") // Remove emojis with invalid IDs
-                .replace(/:{3,}/g, "::") // Replace multiple colons with double colons
-                .replace(/(\s|^):[\w-]*[^:\w-][\w-]*:(\s|$)/g, " "); // Remove invalid emoji patterns
+            let cleaned = input;
+            
+            // Sort placeholders by length (longest first) to prevent partial replacements
+            const sortedPlaceholders = Array.from(placeholders.entries())
+                .sort(([a], [b]) => b.length - a.length);
 
-            // Restore preserved emojis - make sure to escape special characters in the key
-            placeholders.forEach((value, key) => {
-                const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                cleaned = cleaned.replace(new RegExp(escapedKey, "g"), () => value);
-            });
+            // Replace all placeholders with their original emoji
+            for (const [placeholder, emoji] of sortedPlaceholders) {
+                const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                cleaned = cleaned.replace(new RegExp(escapedPlaceholder, 'g'), emoji);
+            }
 
-            logger.debug({
-                input,
-                cleaned,
-                placeholders: Array.from(placeholders.entries()),
-                placeholderCount: placeholders.size
-            }, "Cleanup text debug");
+            // Remove any remaining placeholder patterns that weren't properly replaced
+            cleaned = cleaned.replace(new RegExp(`${uniquePrefix}\\d+`, 'g'), '');
 
             return cleaned;
         };
 
-        // Apply all processing steps
+        // Apply processing steps
         let processed = text;
         processed = preserveDiscordEmojis(processed);
         processed = processUnformattedEmojis(processed);
         processed = cleanupText(processed);
-
-        logger.debug({
-            originalLength: text.length,
-            processedLength: processed.length,
-            emojiCount: placeholders.size
-        }, "Processed emoji text");
 
         return processed;
 
