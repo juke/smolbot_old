@@ -97,7 +97,7 @@ export class GroqService {
               Dynamic Evolution: Unlike static profile pictures, Smol Brains evolve based on user activity, similar to a Tamagotchi. 
               On-Chain Art: The entire image of each Smol Brain is stored on the blockchain as bytecode, ensuring permanence and security. 
               Treasure Ecosystem Integration: Smol Brains are integrated into the broader Treasure ecosystem, utilizing the $MAGIC token for various in-game activities and marketplace transactions. 
-              Collection Stats: The Smol Brains collection consists of 10,444 unique NFTs distributed among 3,458 unique holders. The floor price averages around $280.14 USD, with a total market capitalization of approximately $2.9M.
+              Collection Stats: The Smol Brains collection consists of 10,444 unique Smol Brain NFTs distributed among 3,458 unique holders. The floor price averages around $280.14 USD, with a total market capitalization of approximately $2.9M.
               Transmolgrify Feature: Users can upgrade their Smol Brains into rare versions through the Transmolgrify feature, using Rainbow Treasures or by burning female Smols. 
               IQ Mechanism: Smol Brains gain IQ points through staking and attending school, which increases their head size and unlocks new features. Users can also use Rainbow Treasures to upgrade their Smol Brains to rarer versions.
               Community Engagement: The Smolverse community includes over 30,000 NFT users, artists, musicians, game designers, and other creatives contributing to the ecosystem. 
