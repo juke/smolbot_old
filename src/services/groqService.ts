@@ -32,12 +32,16 @@ export class GroqService {
         const botDisplayName = client.user?.username ?? "AI Assistant";
         const botId = client.user?.id ?? "";
 
+        const emojiStats = emojiService.getEmojiStats();
+        const availableEmojis = emojiService.getAvailableEmojis();
+
         logger.debug({
           contextMessageCount: contextMessages.length,
           hasImages,
           currentModel: MODEL_CONFIG.currentTextModel,
           username: currentUsername,
-          botDisplayName
+          botDisplayName,
+          emojiStats
         }, "Generating AI response");
 
         const completion = await this.groq.chat.completions.create({
@@ -76,10 +80,12 @@ export class GroqService {
 
               EMOTES: 
               Available emotes:
-              ${emojiService.getAvailableEmojis()}
+              ${availableEmojis}
 
               1. Format emotes by wrapping the name in colons, like :emotename:
               2. Only use emotes from the provided list above - do not invent new ones or use unlisted emotes
+              3. Use different emotes in each message - avoid repeating the same emote multiple times
+              4. Use no more than 1-2 emotes per message
 
               SMOL KNOWLEDGE BASE (ONLY IF QUESTIONS ABOUT 'smol', 'smolbrains' OR 'smolverse' COME UP):
               // Only respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
@@ -121,9 +127,7 @@ export class GroqService {
 
         const cleanedResponse = response
           .replace(/^\[?${botDisplayName}:?\]?\s*/i, '')
-          .replace(/\[Referenced Message.*?\]/g, '')
-          .replace(/\[Referenced Image Description.*?\]/g, '')
-          .replace(/\[Image Description.*?\]/g, '')
+          .replace(/\[(?:Referenced )?(?:Message|Image Description).*?\]/gi, '')
           .trim();
 
         logger.info({ 

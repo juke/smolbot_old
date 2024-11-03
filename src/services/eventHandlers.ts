@@ -41,8 +41,10 @@ export async function handleReady(): Promise<void> {
  */
 export async function handleMessage(message: DiscordMessage): Promise<void> {
   try {
-    // Process message content for emoji tracking
-    emojiService.processEmojiText(message.content);
+    // Only process emoji tracking for non-bot messages
+    if (!message.author.bot) {
+      emojiService.processEmojiText(message.content);
+    }
     
     // Always cache the message, regardless of author
     await messageCacheService.cacheMessage(message);
