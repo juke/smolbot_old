@@ -18,6 +18,7 @@ export class EmojiService {
   private readonly updateInterval = 60 * 60 * 1000; // Update cache every hour
   private currentGuildId?: string;
   private currentGuildEmojis?: Collection<string, GuildEmoji>;
+  private lastUsedEmoji: string | null = null;
 
   constructor() {
     // Handle both local and Railway paths
@@ -298,6 +299,7 @@ export class EmojiService {
    */
   public getAvailableEmojis(): string {
     const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
+      .filter(emoji => emoji.name.toLowerCase() !== this.lastUsedEmoji) // Filter out last used emoji
       .map(emoji => ({
         name: emoji.name,
         rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
@@ -472,6 +474,17 @@ export class EmojiService {
             return cleaned;
         };
 
+        // Add last used emoji tracking for bot messages
+        if (isFromBot) {
+            const emojiMatches = text.match(/<(?:a)?:([\w-]+):\d{17,20}>/g);
+            if (emojiMatches && emojiMatches.length > 0) {
+                const lastEmoji = this.parseDiscordEmoji(emojiMatches[emojiMatches.length - 1]);
+                if (lastEmoji) {
+                    this.lastUsedEmoji = lastEmoji.name.toLowerCase();
+                }
+            }
+        }
+
         // Apply processing steps
         let processed = text;
         processed = preserveDiscordEmojis(processed);
@@ -481,11 +494,7 @@ export class EmojiService {
         return processed;
 
     } catch (error) {
-        logger.error({ 
-            error,
-            text: text.slice(0, 100),
-            isFromBot
-        }, "Error processing emoji text");
+        logger.error({ error }, "Error processing emoji text");
         return text;
     }
   }
