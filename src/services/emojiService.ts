@@ -4,6 +4,7 @@ import { logger } from "../config/logger.js";
 import { MODEL_CONFIG } from "../config/config.js";
 import fs from "fs/promises";
 import path from "path";
+import { client } from "./discordClient.js";
 
 /**
  * Service for managing emoji processing, caching, and popularity tracking
@@ -198,26 +199,48 @@ export class EmojiService {
   /**
    * Updates emoji usage count and refreshes available emojis if needed
    */
-  public trackEmojiUsage(emojiName: string): void {
+  public trackEmojiUsage(emojiName: string, isFromBot: boolean = false): void {
+    // Add debug logging
+    logger.debug({ 
+        emojiName, 
+        isFromBot, 
+        currentCount: this.emojiRankings.get(emojiName) ?? 0 
+    }, "Attempting to track emoji usage");
+
+    // Skip tracking if message is from the bot
+    if (isFromBot) {
+        logger.debug({ emojiName }, "Skipping emoji tracking for bot message");
+        return;
+    }
+
     const currentCount = this.emojiRankings.get(emojiName) ?? 0;
-    this.emojiRankings.set(emojiName, currentCount + 1);
+    const newCount = currentCount + 1;
+    this.emojiRankings.set(emojiName, newCount);
+    
+    // Add debug logging for update
+    logger.debug({ 
+        emojiName, 
+        oldCount: currentCount,
+        newCount,
+        rankings: Object.fromEntries(this.emojiRankings)
+    }, "Updated emoji ranking");
     
     // Save rankings immediately after update
     void this.saveRankings();
     
     // Update available emojis if needed
     const lowestTopEmoji = Array.from(MODEL_CONFIG.emojiCache.values())
-      .sort((a, b) => {
-        const rankA = this.emojiRankings.get(a.name.toLowerCase()) ?? 0;
-        const rankB = this.emojiRankings.get(b.name.toLowerCase()) ?? 0;
-        return rankA - rankB;
-      })[0];
+        .sort((a, b) => {
+            const rankA = this.emojiRankings.get(a.name.toLowerCase()) ?? 0;
+            const rankB = this.emojiRankings.get(b.name.toLowerCase()) ?? 0;
+            return rankA - rankB;
+        })[0];
     
     if (lowestTopEmoji) {
-      const lowestRank = this.emojiRankings.get(lowestTopEmoji.name.toLowerCase()) ?? 0;
-      if (currentCount + 1 >= lowestRank) {
-        this.updateAvailableEmojis();
-      }
+        const lowestRank = this.emojiRankings.get(lowestTopEmoji.name.toLowerCase()) ?? 0;
+        if (newCount >= lowestRank) {
+            this.updateAvailableEmojis();
+        }
     }
   }
 
@@ -340,155 +363,164 @@ export class EmojiService {
   /**
    * Processes text to properly format any emoji references and track usage
    */
-  public processEmojiText(text: string): string {
+  public processEmojiText(text: string, isFromBot: boolean = false): string {
     if (!text) return "";
     
     try {
-      // Track all emoji placeholders to prevent nested processing
-      const placeholders: Map<string, string> = new Map();
-      let placeholderCount = 0;
 
-      // Step 1: Preserve properly formatted Discord emojis
-      const preserveDiscordEmojis = (input: string): string => {
-        return input.replace(/<(?:a)?:[\w-]+:\d{17,20}>/g, (match) => {
-          const parsed = this.parseDiscordEmoji(match);
-          if (!parsed) return match;
+        // Track all emoji placeholders to prevent nested processing
+        const placeholders: Map<string, string> = new Map();
+        let placeholderCount = 0;
 
-          // Validate the emoji components
-          if (!this.isValidEmojiName(parsed.name)) return match;
-          if (!/^\d{17,20}$/.test(parsed.id)) return match;
+        // Step 1: Preserve properly formatted Discord emojis
+        const preserveDiscordEmojis = (input: string): string => {
+            return input.replace(/<(?:a)?:[\w-]+:\d{17,20}>/g, (match) => {
+                const parsed = this.parseDiscordEmoji(match);
+                if (!parsed) return match;
 
-          const placeholder = `__EMOJI${placeholderCount++}__`;
-          placeholders.set(placeholder, match);
-          return placeholder;
-        });
-      };
+                // Validate the emoji components
+                if (!this.isValidEmojiName(parsed.name)) return match;
+                if (!/^\d{17,20}$/.test(parsed.id)) return match;
 
-      // Step 2: Process unformatted emoji patterns
-      const processUnformattedEmojis = (input: string): string => {
-        // Handle :emoji: format
-        return input.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
-          // Skip if it's a placeholder
-          if (fullMatch.startsWith("__EMOJI")) {
-            logger.debug({ fullMatch }, "Skipping placeholder");
-            return fullMatch;
-          }
+                this.trackEmojiUsage(parsed.name.toLowerCase(), isFromBot);
 
-          // Basic validation
-          if (!this.isValidEmojiName(emojiName)) {
-            logger.debug({ emojiName }, "Invalid emoji name");
-            return fullMatch;
-          }
+                const placeholder = `__EMOJI${placeholderCount++}__`;
+                placeholders.set(placeholder, match);
+                return placeholder;
+            });
+        };
 
-          const lowercaseName = emojiName.toLowerCase();
-          logger.debug({ 
-            emojiName,
-            lowercaseName,
-            cacheSize: MODEL_CONFIG.emojiCache.size,
-            cacheHas: MODEL_CONFIG.emojiCache.has(lowercaseName),
-            cachedEmoji: MODEL_CONFIG.emojiCache.get(lowercaseName)
-          }, "Emoji lookup");
+        // Step 2: Process unformatted emoji patterns
+        const processUnformattedEmojis = (input: string): string => {
+            // Handle :emoji: format
+            return input.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
+                // Add debug logging for each match
+                logger.debug({ 
+                    fullMatch, 
+                    emojiName,
+                    isFromBot
+                }, "Processing emoji match");
 
-          const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
+                // Skip if it's a placeholder
+                if (fullMatch.startsWith("__EMOJI")) {
+                    logger.debug({ fullMatch }, "Skipping placeholder");
+                    return fullMatch;
+                }
 
-          if (emoji) {
-            this.trackEmojiUsage(lowercaseName);
-            
-            // Use the correct format based on whether the emoji is animated
-            const formattedEmoji = emoji.animated 
-              ? `<a:${emoji.name}:${emoji.id}>`
-              : `<:${emoji.name}:${emoji.id}>`;
-            
+                // Basic validation
+                if (!this.isValidEmojiName(emojiName)) {
+                    logger.debug({ emojiName }, "Invalid emoji name");
+                    return fullMatch;
+                }
+
+                const lowercaseName = emojiName.toLowerCase();
+                const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
+
+                if (emoji) {
+                    // Add debug logging before tracking
+                    logger.debug({ 
+                        emojiName: lowercaseName,
+                        isFromBot,
+                        currentRanking: this.emojiRankings.get(lowercaseName)
+                    }, "Tracking emoji usage");
+
+                    this.trackEmojiUsage(lowercaseName, isFromBot);
+                    
+                    // Use the correct format based on whether the emoji is animated
+                    const formattedEmoji = emoji.animated 
+                        ? `<a:${emoji.name}:${emoji.id}>`
+                        : `<:${emoji.name}:${emoji.id}>`;
+                    
+                    logger.debug({
+                        original: fullMatch,
+                        formatted: formattedEmoji,
+                        animated: emoji.animated,
+                        name: emoji.name,
+                        id: emoji.id,
+                        guildId: emoji.guildId
+                    }, "Formatted emoji");
+
+                    // Test the emoji format directly
+                    const placeholder = `__EMOJI${placeholderCount++}__`;
+                    placeholders.set(placeholder, formattedEmoji);
+                    return placeholder;
+                }
+
+                // If emoji not found in cache, try case-sensitive match
+                const exactEmoji = MODEL_CONFIG.emojiCache.get(emojiName);
+                if (exactEmoji) {
+                    this.trackEmojiUsage(emojiName, isFromBot);
+                    
+                    logger.debug({ 
+                        emojiName,
+                        exactMatch: true,
+                        emoji: exactEmoji 
+                    }, "Found case-sensitive match");
+                    
+                    const formattedEmoji = exactEmoji.animated 
+                        ? `<a:${exactEmoji.name}:${exactEmoji.id}>`
+                        : `<:${exactEmoji.name}:${exactEmoji.id}>`;
+                    
+                    const placeholder = `__EMOJI${placeholderCount++}__`;
+                    placeholders.set(placeholder, formattedEmoji);
+                    return placeholder;
+                }
+
+                logger.debug({ 
+                    emojiName,
+                    lowercaseName,
+                    cacheKeys: Array.from(MODEL_CONFIG.emojiCache.keys())
+                }, "Emoji not found in cache");
+                return fullMatch;
+            });
+        };
+
+        // Step 3: Handle edge cases and cleanup
+        const cleanupText = (input: string): string => {
+            // Remove any malformed emoji patterns
+            let cleaned = input
+                .replace(/<:[\w-]+>/g, "") // Remove emojis without IDs
+                .replace(/<a?:[\w-]+:(?!\d{17,20}>)/g, "") // Remove emojis with invalid IDs
+                .replace(/:{3,}/g, "::") // Replace multiple colons with double colons
+                .replace(/(\s|^):[\w-]*[^:\w-][\w-]*:(\s|$)/g, " "); // Remove invalid emoji patterns
+
+            // Restore preserved emojis - make sure to escape special characters in the key
+            placeholders.forEach((value, key) => {
+                const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                cleaned = cleaned.replace(new RegExp(escapedKey, "g"), () => value);
+            });
+
             logger.debug({
-              original: fullMatch,
-              formatted: formattedEmoji,
-              animated: emoji.animated,
-              name: emoji.name,
-              id: emoji.id,
-              guildId: emoji.guildId
-            }, "Formatted emoji");
+                input,
+                cleaned,
+                placeholders: Array.from(placeholders.entries()),
+                placeholderCount: placeholders.size
+            }, "Cleanup text debug");
 
-            // Test the emoji format directly
-            const placeholder = `__EMOJI${placeholderCount++}__`;
-            placeholders.set(placeholder, formattedEmoji);
-            return placeholder;
-          }
+            return cleaned;
+        };
 
-          // If emoji not found in cache, try case-sensitive match
-          const exactEmoji = MODEL_CONFIG.emojiCache.get(emojiName);
-          if (exactEmoji) {
-            logger.debug({ 
-              emojiName,
-              exactMatch: true,
-              emoji: exactEmoji 
-            }, "Found case-sensitive match");
-            
-            this.trackEmojiUsage(emojiName);
-            const formattedEmoji = exactEmoji.animated 
-              ? `<a:${exactEmoji.name}:${exactEmoji.id}>`
-              : `<:${exactEmoji.name}:${exactEmoji.id}>`;
-            
-            const placeholder = `__EMOJI${placeholderCount++}__`;
-            placeholders.set(placeholder, formattedEmoji);
-            return placeholder;
-          }
-
-          logger.debug({ 
-            emojiName,
-            lowercaseName,
-            cacheKeys: Array.from(MODEL_CONFIG.emojiCache.keys())
-          }, "Emoji not found in cache");
-          return fullMatch;
-        });
-      };
-
-      // Step 3: Handle edge cases and cleanup
-      const cleanupText = (input: string): string => {
-        // Remove any malformed emoji patterns
-        let cleaned = input
-          .replace(/<:[\w-]+>/g, "") // Remove emojis without IDs
-          .replace(/<a?:[\w-]+:(?!\d{17,20}>)/g, "") // Remove emojis with invalid IDs
-          .replace(/:{3,}/g, "::") // Replace multiple colons with double colons
-          .replace(/(\s|^):[\w-]*[^:\w-][\w-]*:(\s|$)/g, " "); // Remove invalid emoji patterns
-
-        // Restore preserved emojis - make sure to escape special characters in the key
-        placeholders.forEach((value, key) => {
-          const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          cleaned = cleaned.replace(new RegExp(escapedKey, "g"), () => value);
-        });
+        // Apply all processing steps
+        let processed = text;
+        processed = preserveDiscordEmojis(processed);
+        processed = processUnformattedEmojis(processed);
+        processed = cleanupText(processed);
 
         logger.debug({
-          input,
-          cleaned,
-          placeholders: Array.from(placeholders.entries()),
-          placeholderCount: placeholders.size
-        }, "Cleanup text debug");
+            originalLength: text.length,
+            processedLength: processed.length,
+            emojiCount: placeholders.size
+        }, "Processed emoji text");
 
-        return cleaned;
-      };
-
-      // Apply all processing steps
-      let processed = text;
-      processed = preserveDiscordEmojis(processed);
-      processed = processUnformattedEmojis(processed);
-      processed = cleanupText(processed);
-
-      logger.debug({
-        originalLength: text.length,
-        processedLength: processed.length,
-        emojiCount: placeholders.size
-      }, "Processed emoji text");
-
-      return processed;
+        return processed;
 
     } catch (error) {
-      logger.error({ 
-        error,
-        text: text.slice(0, 100) // Log first 100 chars for debugging
-      }, "Error processing emoji text");
-      
-      // Return original text if processing fails
-      return text;
+        logger.error({ 
+            error,
+            text: text.slice(0, 100),
+            isFromBot
+        }, "Error processing emoji text");
+        return text;
     }
   }
 }
