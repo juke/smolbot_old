@@ -369,6 +369,11 @@ export class EmojiService {
     void this.refreshGuildEmojis();
     
     try {
+        // Skip processing if the text already contains formatted Discord emojis
+        if (text.match(/<a?:\w+:\d{17,20}>/)) {
+            return text;
+        }
+
         // Step 1: Handle Discord formatted emojis first
         let processed = text.replace(/<(a)?:(\w+):(\d{17,20})>/g, (match, animated, name, id) => {
             if (!this.isValidEmojiName(name)) return match;
