@@ -331,19 +331,32 @@ export class EmojiService {
    * Gets a formatted list of top emojis by usage
    */
   public getAvailableEmojis(): string {
-    // Get all emojis except the last used one
-    const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
-        .filter(emoji => emoji.name.toLowerCase() !== this.lastUsedEmoji)
-        .map(emoji => ({
-            name: emoji.name,
-            rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
-        }))
-        .sort((a, b) => b.rank - a.rank)
-        .slice(0, this.maxDisplayedEmojis)
-        // Use the exact emoji name from cache instead of any variations
-        .map(({ name }) => `:${name}:`);
+    // Debug log current cache state
+    logger.debug({
+      cacheSize: MODEL_CONFIG.emojiCache.size,
+      allEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name)
+    }, "Getting available emojis");
 
-    return emojiList.join(", ") || "No custom emojis available";
+    // Get all emojis except the last used one, preserving exact names
+    const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
+      .filter(emoji => emoji.name.toLowerCase() !== this.lastUsedEmoji)
+      .map(emoji => ({
+        name: emoji.name,  // Use exact name from cache
+        rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
+      }))
+      .sort((a, b) => b.rank - a.rank)
+      .slice(0, this.maxDisplayedEmojis)
+      .map(({ name }) => `:${name}:`);
+
+    const emojiString = emojiList.join(", ");
+    
+    // Debug log the final emoji list
+    logger.debug({
+      emojiCount: emojiList.length,
+      emojis: emojiList
+    }, "Available emojis list generated");
+
+    return emojiString || "No custom emojis available";
   }
 
   /**
@@ -540,21 +553,58 @@ export class EmojiService {
 
   /**
    * Finds the best matching emoji from cache
-   * Handles variations like 'smolgrow' matching 'smol_grow'
    */
   private findBestMatchingEmoji(requestedName: string): CachedEmoji | undefined {
+    // Log the requested emoji name for debugging
+    logger.debug({
+      requestedName,
+      cacheSize: MODEL_CONFIG.emojiCache.size,
+      availableEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name)
+    }, "Finding best matching emoji");
+
     // Try exact match first
     const exactMatch = this.getEmojiFromCache(requestedName);
-    if (exactMatch) return exactMatch;
+    if (exactMatch) {
+      logger.debug({ 
+        requestedName,
+        matchedName: exactMatch.name 
+      }, "Found exact emoji match");
+      return exactMatch;
+    }
 
-    // Convert requested name to lowercase and remove underscores
-    const normalizedRequest = requestedName.toLowerCase().replace(/_/g, "");
-    
-    // Find emoji where normalized names match
-    return Array.from(MODEL_CONFIG.emojiCache.values()).find(emoji => {
+    // Try case-insensitive match
+    const lowercaseRequest = requestedName.toLowerCase();
+    const caseInsensitiveMatch = Array.from(MODEL_CONFIG.emojiCache.values()).find(
+      emoji => emoji.name.toLowerCase() === lowercaseRequest
+    );
+    if (caseInsensitiveMatch) {
+      logger.debug({ 
+        requestedName,
+        matchedName: caseInsensitiveMatch.name 
+      }, "Found case-insensitive emoji match");
+      return caseInsensitiveMatch;
+    }
+
+    // Try normalized match (removing underscores)
+    const normalizedRequest = lowercaseRequest.replace(/_/g, "");
+    const normalizedMatch = Array.from(MODEL_CONFIG.emojiCache.values()).find(emoji => {
       const normalizedEmoji = emoji.name.toLowerCase().replace(/_/g, "");
       return normalizedEmoji === normalizedRequest;
     });
+
+    if (normalizedMatch) {
+      logger.debug({ 
+        requestedName,
+        matchedName: normalizedMatch.name 
+      }, "Found normalized emoji match");
+    } else {
+      logger.debug({ 
+        requestedName,
+        availableEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name)
+      }, "No emoji match found");
+    }
+
+    return normalizedMatch;
   }
 
   /**
