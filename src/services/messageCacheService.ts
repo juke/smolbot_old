@@ -220,7 +220,7 @@ export class MessageCacheService {
   /**
    * Fetches initial messages for a channel if not already cached
    */
-  private async ensureChannelCache(
+  public async ensureChannelCache(
     guildId: string, 
     channelId: string
   ): Promise<void> {
