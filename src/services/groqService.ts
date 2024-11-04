@@ -87,7 +87,7 @@ export class GroqService {
               EMOTE RULES:
               - Format emotes by wrapping the name in colons, like :emotename:
               - Pick an emote that is relevant to your response
-              - Only use emotes from the provided list above - do not invent new ones or use unlisted emotes
+              - IMPORTANT: Only use emotes from the list provided in "Available emotes" above. Do not use any emotes that are not explicitly listed there, including standard Discord emojis or custom emotes from other servers. Format each emote exactly as shown in the list.
               - Use different emotes in each message - look at your messages (your username is ${botDisplayName}) and avoid repeating the same emote multiple times
 
               SMOL KNOWLEDGE BASE:
