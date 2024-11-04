@@ -71,7 +71,8 @@ export class GroqService {
               7. IMPORTANT: Keep all responses to 1-2 sentences maximum, make them short and to the point
               8. VERY VERY IMPORTANT: Make sure your replies are witty, funny, clever one-liners that will make ${currentUsername} and the chat laugh
               9. Do not include @ before ${currentUsername}'s name or any other user's name
-              
+              10. NEVER include [Referenced Message] or [Image Description] markers in your responses
+
               CONVERSATION RULES:
               1. Focus on ${currentUsername}'s most recent message while considering context
               2. Build on previous conversation topics naturally
@@ -127,7 +128,7 @@ export class GroqService {
 
         const cleanedResponse = response
           .replace(/^\[?${botDisplayName}:?\]?\s*/i, '')
-          .replace(/\[(?:Referenced )?(?:Message|Image Description).*?\]/gi, '')
+          .replace(/\[((?:Referenced )?(?:Message from|Image Description):[^\]]+)\]/g, '')
           .trim();
 
         logger.info({ 
@@ -138,6 +139,11 @@ export class GroqService {
           username: currentUsername
         }, "Generated AI response");
         
+        logger.debug({ 
+          originalResponse: response,
+          cleanedResponse
+        }, "Response cleanup");
+
         return cleanedResponse;
       } catch (error) {
         if (handleModelFallback(error, "text")) {
