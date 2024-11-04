@@ -153,7 +153,7 @@ export class MessageCacheService {
       }, "Removed oldest message from cache");
     }
 
-    logger.info({
+    logger.debug({
       messageId: message.id,
       guildId,
       channelId,
@@ -215,6 +215,46 @@ export class MessageCacheService {
         content: contentParts.join("\n")
       };
     });
+  }
+
+  /**
+   * Fetches initial messages for a channel if not already cached
+   */
+  private async ensureChannelCache(
+    guildId: string, 
+    channelId: string
+  ): Promise<void> {
+    const guildCache = this.getGuildCache(guildId);
+    const channelMessages = guildCache.get(channelId);
+
+    // Only fetch if channel cache isn't completely full
+    if (!channelMessages || channelMessages.length < CONFIG.MAX_MESSAGES) {
+      try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel?.isTextBased()) return;
+
+        const messages = await channel.messages.fetch({ limit: CONFIG.MAX_MESSAGES });
+        const sortedMessages = Array.from(messages.values())
+          .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
+        for (const message of sortedMessages) {
+          await this.cacheMessage(message);
+        }
+
+        logger.info({
+          guildId,
+          channelId,
+          messageCount: sortedMessages.length
+        }, "Initialized channel cache");
+
+      } catch (error) {
+        logger.error({ 
+          error,
+          guildId,
+          channelId 
+        }, "Failed to initialize channel cache");
+      }
+    }
   }
 }
 

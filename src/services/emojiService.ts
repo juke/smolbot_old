@@ -479,17 +479,6 @@ export class EmojiService {
             return processed;
         }
 
-        // Debug log the cache state before processing
-        logger.debug({
-            cacheEntries: Array.from(MODEL_CONFIG.emojiCache.entries())
-                .map(([key, value]) => ({
-                    key,
-                    id: value.id,
-                    name: value.name,
-                    animated: value.animated
-                }))
-        }, "Current emoji cache state");
-
         // Second pass: Process :emoji: format with improved handling
         const processed = text.replace(/:(\w+):/g, (match, name) => {
             // Debug log each emoji being processed

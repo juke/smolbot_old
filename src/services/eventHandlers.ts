@@ -15,17 +15,11 @@ export async function handleReady(): Promise<void> {
     guildCount: client.guilds.cache.size
   }, "Bot successfully logged in");
   
+  // Only initialize emoji cache at startup
   let totalEmojis = 0;
   client.guilds.cache.forEach(guild => {
     const emojiCount = guild.emojis.cache.size;
     totalEmojis += emojiCount;
-    
-    logger.debug({
-      guildId: guild.id,
-      guildName: guild.name,
-      emojiCount
-    }, "Caching guild emojis");
-    
     emojiService.cacheGuildEmojis(guild.id, guild.emojis.cache);
   });
   
@@ -41,6 +35,12 @@ export async function handleReady(): Promise<void> {
  */
 export async function handleMessage(message: DiscordMessage): Promise<void> {
   try {
+    const guildId = message.guild?.id ?? "DM";
+    const channelId = message.channel.id;
+
+    // Ensure channel has cached messages before processing
+    await messageCacheService.ensureChannelCache(guildId, channelId);
+    
     // Always cache the message first, regardless of author
     await messageCacheService.cacheMessage(message);
     
