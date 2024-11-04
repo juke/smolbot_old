@@ -63,7 +63,7 @@ export class GroqService {
               - Provide helpful answers with wit and charm appropriate to the situation
 
               RESPONSE FORMAT:
-              - Keep responses concise (1-2 sentences) but engaging
+              - IMPORTANT: Always keep responses concise and restrict the length to 1-2 sentences
               - Adapt response length based on conversation flow
               - Use lowercase except for emphasis or proper nouns
               - Avoid repetitive patterns in personality or emotes
