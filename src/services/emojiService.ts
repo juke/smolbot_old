@@ -58,6 +58,10 @@ export class EmojiService {
       // Create data directory if it doesn't exist
       try {
         await fs.mkdir(this.dataDir, { recursive: true });
+        // Set directory permissions explicitly for Railway
+        if (process.env.RAILWAY_ENVIRONMENT) {
+          await fs.chmod(this.dataDir, 0o777);
+        }
         logger.info({
           dataDir: this.dataDir,
         }, "Created/verified data directory");
@@ -90,20 +94,26 @@ export class EmojiService {
           }
         }
 
-        // Write/overwrite file with valid content
+        // Write/overwrite file with valid content and proper permissions
         await fs.writeFile(
           this.rankingsPath, 
           JSON.stringify(rankings, null, 2), 
           { 
             encoding: "utf-8",
-            mode: 0o666 // Read/write for all
+            mode: process.env.RAILWAY_ENVIRONMENT ? 0o666 : 0o644 // More permissive on Railway
           }
         );
+
+        // Set file permissions explicitly for Railway
+        if (process.env.RAILWAY_ENVIRONMENT) {
+          await fs.chmod(this.rankingsPath, 0o666);
+        }
 
         this.emojiRankings = new Map(Object.entries(rankings));
         logger.info({
           rankingsCount: this.emojiRankings.size,
-          path: this.rankingsPath
+          path: this.rankingsPath,
+          permissions: process.env.RAILWAY_ENVIRONMENT ? "0666" : "0644"
         }, "Initialized emoji rankings");
 
       } catch (fileError: any) {
@@ -193,23 +203,32 @@ export class EmojiService {
    */
   private async saveRankings(): Promise<void> {
     try {
-        const rankings = Object.fromEntries(this.emojiRankings);
-        await fs.writeFile(
-            this.rankingsPath, 
-            JSON.stringify(rankings, null, 2),
-            { encoding: "utf-8" }
-        );
-        
-        // Only log hourly
-        const now = Date.now();
-        if (!this.lastSaveLog || now - this.lastSaveLog > 3600000) {
-            logger.debug({
-                rankingsCount: this.emojiRankings.size,
-            }, "Saved emoji rankings");
-            this.lastSaveLog = now;
+      const rankings = Object.fromEntries(this.emojiRankings);
+      await fs.writeFile(
+        this.rankingsPath, 
+        JSON.stringify(rankings, null, 2),
+        { 
+          encoding: "utf-8",
+          mode: process.env.RAILWAY_ENVIRONMENT ? 0o666 : 0o644 // More permissive on Railway
         }
+      );
+
+      // Set file permissions explicitly after writing
+      if (process.env.RAILWAY_ENVIRONMENT) {
+        await fs.chmod(this.rankingsPath, 0o666);
+      }
+      
+      // Only log hourly
+      const now = Date.now();
+      if (!this.lastSaveLog || now - this.lastSaveLog > 3600000) {
+        logger.debug({
+          rankingsCount: this.emojiRankings.size,
+          permissions: process.env.RAILWAY_ENVIRONMENT ? "0666" : "0644"
+        }, "Saved emoji rankings");
+        this.lastSaveLog = now;
+      }
     } catch (error) {
-        logger.error({ error }, "Error saving emoji rankings");
+      logger.error({ error }, "Error saving emoji rankings");
     }
   }
 

@@ -12,7 +12,8 @@
     "volumes": [
       {
         "path": "/app/data",
-        "name": "bot-data"
+        "name": "bot-data",
+        "mode": "0777"
       }
     ]
   }
