@@ -26,7 +26,7 @@ export class EmojiService {
   constructor() {
     // Handle both local and Railway paths
     this.dataDir = process.env.RAILWAY_ENVIRONMENT 
-      ? "/app/data"
+      ? "/data"
       : "./data";
     
     this.rankingsPath = path.join(this.dataDir, "emoji-rankings.json");
@@ -58,12 +58,13 @@ export class EmojiService {
       // Create data directory if it doesn't exist
       try {
         await fs.mkdir(this.dataDir, { recursive: true });
-        // Set directory permissions explicitly for Railway
+        // Set directory permissions explicitly
         if (process.env.RAILWAY_ENVIRONMENT) {
           await fs.chmod(this.dataDir, 0o777);
         }
         logger.info({
           dataDir: this.dataDir,
+          permissions: (await fs.stat(this.dataDir)).mode.toString(8)
         }, "Created/verified data directory");
       } catch (mkdirError) {
         logger.error({ 
@@ -94,13 +95,13 @@ export class EmojiService {
           }
         }
 
-        // Write/overwrite file with valid content and proper permissions
+        // Write/overwrite file with valid content and explicit permissions
         await fs.writeFile(
           this.rankingsPath, 
           JSON.stringify(rankings, null, 2), 
           { 
             encoding: "utf-8",
-            mode: process.env.RAILWAY_ENVIRONMENT ? 0o666 : 0o644 // More permissive on Railway
+            mode: 0o666 // Read/write for all
           }
         );
 
@@ -113,7 +114,7 @@ export class EmojiService {
         logger.info({
           rankingsCount: this.emojiRankings.size,
           path: this.rankingsPath,
-          permissions: process.env.RAILWAY_ENVIRONMENT ? "0666" : "0644"
+          permissions: (await fs.stat(this.rankingsPath)).mode.toString(8)
         }, "Initialized emoji rankings");
 
       } catch (fileError: any) {
@@ -203,32 +204,23 @@ export class EmojiService {
    */
   private async saveRankings(): Promise<void> {
     try {
-      const rankings = Object.fromEntries(this.emojiRankings);
-      await fs.writeFile(
-        this.rankingsPath, 
-        JSON.stringify(rankings, null, 2),
-        { 
-          encoding: "utf-8",
-          mode: process.env.RAILWAY_ENVIRONMENT ? 0o666 : 0o644 // More permissive on Railway
+        const rankings = Object.fromEntries(this.emojiRankings);
+        await fs.writeFile(
+            this.rankingsPath, 
+            JSON.stringify(rankings, null, 2),
+            { encoding: "utf-8" }
+        );
+        
+        // Only log hourly
+        const now = Date.now();
+        if (!this.lastSaveLog || now - this.lastSaveLog > 3600000) {
+            logger.debug({
+                rankingsCount: this.emojiRankings.size,
+            }, "Saved emoji rankings");
+            this.lastSaveLog = now;
         }
-      );
-
-      // Set file permissions explicitly after writing
-      if (process.env.RAILWAY_ENVIRONMENT) {
-        await fs.chmod(this.rankingsPath, 0o666);
-      }
-      
-      // Only log hourly
-      const now = Date.now();
-      if (!this.lastSaveLog || now - this.lastSaveLog > 3600000) {
-        logger.debug({
-          rankingsCount: this.emojiRankings.size,
-          permissions: process.env.RAILWAY_ENVIRONMENT ? "0666" : "0644"
-        }, "Saved emoji rankings");
-        this.lastSaveLog = now;
-      }
     } catch (error) {
-      logger.error({ error }, "Error saving emoji rankings");
+        logger.error({ error }, "Error saving emoji rankings");
     }
   }
 

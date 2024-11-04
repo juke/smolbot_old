@@ -11,7 +11,7 @@
     "restartPolicyType": "ON_FAILURE",
     "volumes": [
       {
-        "path": "/app/data",
+        "path": "/data",
         "name": "bot-data",
         "mode": "0777"
       }
