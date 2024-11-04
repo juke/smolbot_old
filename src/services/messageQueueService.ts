@@ -163,7 +163,8 @@ export class MessageQueueService {
 
       // Wait for response to be ready
       const responseText = await responsePromise;
-      // Process emojis with isFromBot flag set to true for bot responses
+      
+      // Only process emojis once, with isFromBot=true
       const processedResponse = emojiService.processEmojiText(responseText, true);
       
       if (queuedMessage.message.channel.type === ChannelType.GuildText) {
