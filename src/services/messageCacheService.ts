@@ -37,6 +37,48 @@ export class MessageCacheService {
   }
 
   /**
+   * Converts user mentions to display names in a message
+   * @param content - The message content to process
+   * @param message - The Discord message object for guild context
+   * @returns The processed message content with mentions converted to display names
+   */
+  private async processUserMentions(content: string, message: DiscordMessage): Promise<string> {
+    const mentionPattern = /<@!?(\d+)>/g;
+    const mentions = [...content.matchAll(mentionPattern)];
+
+    if (!mentions.length) return content;
+
+    let processedContent = content;
+    for (const mention of mentions) {
+      try {
+        const userId = mention[1];
+        let displayName: string;
+
+        if (message.guild) {
+          const member = await message.guild.members.fetch(userId);
+          displayName = member.displayName;
+        } else {
+          const user = await client.users.fetch(userId);
+          displayName = user.username;
+        }
+
+        processedContent = processedContent.replace(
+          mention[0],
+          displayName
+        );
+      } catch (error) {
+        logger.warn({ 
+          error,
+          userId: mention[1],
+          messageId: message.id 
+        }, "Failed to resolve user mention");
+      }
+    }
+
+    return processedContent;
+  }
+
+  /**
    * Caches a new message with its metadata
    */
   public async cacheMessage(message: DiscordMessage): Promise<CachedMessage> {
@@ -85,12 +127,15 @@ export class MessageCacheService {
       }
     }
 
+    // Process user mentions in the message content
+    const processedContent = await this.processUserMentions(message.content, message);
+
     const cachedMessage: CachedMessage = {
       id: message.id,
       authorId: message.author.id,
       authorUsername: message.author.username,
       authorDisplayName: message.member?.displayName ?? message.author.username,
-      content: message.content,
+      content: processedContent,
       timestamp: new Date(message.createdTimestamp),
       imageDescriptions,
       referencedMessage

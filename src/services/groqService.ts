@@ -87,8 +87,8 @@ export class GroqService {
               4. NEVER repeat the same emote in consecutive messages unless you have a good reason
               5. If you see messages from ${botDisplayName} using an emote, do not use the same emote in your next message unless you have a good reason
 
-              SMOL KNOWLEDGE BASE (ONLY IF QUESTIONS ABOUT 'smol', 'smolbrains' OR 'smolverse' COME UP):
-              // Only respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
+              SMOL KNOWLEDGE BASE:
+              // If anyone in the chat asks about 'smol', 'smolbrains' or 'smolverse', respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
 
               Launched in 2021, Smol Brains are dynamic NFTs featuring monkey characters whose head sizes increase with their IQ levels. These NFTs are part of the Smolverse ecosystem on the Arbitrum blockchain, offering a playful and community-driven experience.
 
