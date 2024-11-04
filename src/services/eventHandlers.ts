@@ -43,10 +43,11 @@ export async function handleMessage(message: DiscordMessage): Promise<void> {
   try {
     // Always cache the message first, regardless of author
     await messageCacheService.cacheMessage(message);
+    
     // Process emojis for all messages except bot messages
     if (!message.author.bot) {
-      // Process emojis with isFromBot=false for user messages
-      const processedContent = emojiService.processEmojiText(message.content, false);
+      // Process emojis with isFromBot=false for user messages - just for tracking usage
+      await emojiService.processEmojiText(message.content, false);
     }
     
     // Exit early if message is from the bot - after caching but before any other processing

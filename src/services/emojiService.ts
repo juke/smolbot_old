@@ -20,6 +20,8 @@ export class EmojiService {
   private currentGuildEmojis?: Collection<string, GuildEmoji>;
   private lastUsedEmoji: string | null = null;
   private lastSaveLog: number = 0;
+  private readonly cacheRefreshInterval = 5 * 60 * 1000; // 5 minutes
+  private lastCacheRefresh: number = 0;
 
   constructor() {
     // Handle both local and Railway paths
@@ -264,7 +266,7 @@ export class EmojiService {
       }
     });
 
-    // Cache new emojis
+    // Cache new emojis with explicit animated flag handling
     emojis.forEach(emoji => {
       if (!emoji.name) return;
       
@@ -273,19 +275,28 @@ export class EmojiService {
       MODEL_CONFIG.emojiCache.set(lowercaseName, {
         id: emoji.id,
         name: emoji.name,
-        animated: emoji.animated ?? false,
+        animated: Boolean(emoji.animated), // Ensure boolean type
         guildId: guildId
       });
 
+      // Initialize ranking if needed
       if (!this.emojiRankings.has(lowercaseName)) {
         this.emojiRankings.set(lowercaseName, 0);
       }
+
+      // Log cached emoji details for debugging
+      logger.debug({
+        emojiName: emoji.name,
+        emojiId: emoji.id,
+        animated: Boolean(emoji.animated),
+        guildId
+      }, "Cached guild emoji");
     });
 
-    // Single log for the entire cache update
-    logger.debug({
+    logger.info({
       guildId,
-      emojiCount: MODEL_CONFIG.emojiCache.size
+      emojiCount: MODEL_CONFIG.emojiCache.size,
+      animatedCount: Array.from(MODEL_CONFIG.emojiCache.values()).filter(e => e.animated).length
     }, "Updated emoji cache");
   }
 
@@ -294,14 +305,14 @@ export class EmojiService {
    */
   public getAvailableEmojis(): string {
     const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
-      .filter(emoji => emoji.name.toLowerCase() !== this.lastUsedEmoji) // Filter out last used emoji
-      .map(emoji => ({
-        name: emoji.name,
-        rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
-      }))
-      .sort((a, b) => b.rank - a.rank)
-      .slice(0, this.maxDisplayedEmojis)
-      .map(({ name }) => `:${name}:`);
+        .filter(emoji => emoji.name.toLowerCase() !== this.lastUsedEmoji)
+        .map(emoji => ({
+            name: emoji.name,
+            rank: this.emojiRankings.get(emoji.name.toLowerCase()) ?? 0
+        }))
+        .sort((a, b) => b.rank - a.rank)
+        .slice(0, this.maxDisplayedEmojis)
+        .map(({ name }) => `:${name}:`);
 
     return emojiList.join(", ") || "No custom emojis available";
   }
@@ -325,10 +336,17 @@ export class EmojiService {
    */
   private isValidEmojiName(name: string): boolean {
     // Simplified validation - just check for basic emoji name rules
-    const validPattern = /^[\w-]+$/;
-    return name.length >= 2 && 
-           name.length <= 32 && 
-           validPattern.test(name);
+    const validPattern = /^[\w-]{2,32}$/;
+    const isValid = validPattern.test(name);
+    
+    if (!isValid) {
+        logger.debug({ 
+            name,
+            pattern: validPattern.source
+        }, "Invalid emoji name");
+    }
+    
+    return isValid;
   }
 
   /**
@@ -350,10 +368,27 @@ export class EmojiService {
   private async refreshGuildEmojis(): Promise<void> {
     if (!this.currentGuildId) return;
     
+    const now = Date.now();
+    // Only refresh if more than cacheRefreshInterval has passed
+    if (now - this.lastCacheRefresh < this.cacheRefreshInterval) {
+        logger.debug({
+            timeSinceLastRefresh: now - this.lastCacheRefresh,
+            interval: this.cacheRefreshInterval
+        }, "Skipping emoji cache refresh - too soon");
+        return;
+    }
+    
     try {
         const guild = await client.guilds.fetch(this.currentGuildId);
         const emojis = await guild.emojis.fetch();
         this.cacheGuildEmojis(this.currentGuildId, emojis);
+        this.lastCacheRefresh = now;
+        
+        logger.info({
+            guildId: this.currentGuildId,
+            cacheSize: MODEL_CONFIG.emojiCache.size,
+            timeSinceLastRefresh: now - this.lastCacheRefresh
+        }, "Refreshed emoji cache");
     } catch (error) {
         logger.error({ error, guildId: this.currentGuildId }, "Failed to refresh guild emojis");
     }
@@ -362,46 +397,62 @@ export class EmojiService {
   /**
    * Processes text to properly format any emoji references and track usage
    */
-  public processEmojiText(text: string, isFromBot: boolean = false): string {
+  public async processEmojiText(text: string, isFromBot: boolean = false): Promise<string> {
     if (!text) return "";
     
-    // Add refresh at start of processing
-    void this.refreshGuildEmojis();
-    
     try {
-        // Skip processing if the text already contains formatted Discord emojis
+        // Ensure emoji cache is up to date before processing
+        await this.refreshGuildEmojis();
+        
+        // Preserve existing Discord formatted emojis
         if (text.match(/<a?:\w+:\d{17,20}>/)) {
+            const emojiMatches = text.matchAll(/<(a)?:(\w+):(\d{17,20})>/g);
+            for (const match of emojiMatches) {
+                const [_, animated, name] = match;
+                if (name) {
+                    this.trackEmojiUsage(name.toLowerCase(), isFromBot);
+                }
+            }
             return text;
         }
 
-        // Step 1: Handle Discord formatted emojis first
-        let processed = text.replace(/<(a)?:(\w+):(\d{17,20})>/g, (match, animated, name, id) => {
-            if (!this.isValidEmojiName(name)) return match;
-            
-            const emoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
-            if (emoji) {
-                this.trackEmojiUsage(name.toLowerCase(), isFromBot);
-                return animated ? `<a:${name}:${id}>` : `<:${name}:${id}>`;
+        // Process :emoji: format with case-insensitive matching
+        const processed = text.replace(/:(\w+):/g, (match, name) => {
+            if (!this.isValidEmojiName(name)) {
+                logger.debug({ name }, "Invalid emoji name skipped");
+                return match;
             }
-            return match;
+            
+            // Convert to lowercase for cache lookup
+            const lowercaseName = name.toLowerCase();
+            const emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
+            
+            if (!emoji) {
+                logger.debug({ 
+                    originalName: name,
+                    lowercaseName,
+                    availableEmojis: Array.from(MODEL_CONFIG.emojiCache.keys())
+                }, "Emoji not found in cache");
+                return match;
+            }
+
+            this.trackEmojiUsage(lowercaseName, isFromBot);
+            const formatted = emoji.animated 
+                ? `<a:${emoji.name}:${emoji.id}>`
+                : `<:${emoji.name}:${emoji.id}>`;
+            
+            // Log successful emoji conversion
+            logger.debug({
+                originalName: name,
+                lowercaseName,
+                formatted,
+                animated: emoji.animated,
+                cacheSize: MODEL_CONFIG.emojiCache.size
+            }, "Emoji conversion successful");
+            
+            return formatted;
         });
 
-        // Step 2: Handle :emoji: format
-        processed = processed.replace(/:(\w+):/g, (match, name) => {
-            if (!this.isValidEmojiName(name)) return match;
-            
-            // Try case-insensitive lookup
-            const emoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
-            if (emoji) {
-                this.trackEmojiUsage(name.toLowerCase(), isFromBot);
-                return emoji.animated 
-                    ? `<a:${emoji.name}:${emoji.id}>`
-                    : `<:${emoji.name}:${emoji.id}>`;
-            }
-            return match;
-        });
-
-        // Track last used emoji for bot messages
         if (isFromBot) {
             const lastEmojiMatch = processed.match(/<(?:a)?:(\w+):\d{17,20}>/);
             if (lastEmojiMatch) {
@@ -409,12 +460,59 @@ export class EmojiService {
             }
         }
 
+        // Only log unprocessed emojis that weren't successfully converted
+        const remainingEmojis = processed.match(/:(\w+):/g);
+        if (remainingEmojis) {
+            // Filter out any that were actually processed (by checking if they exist in the final string)
+            const actuallyUnprocessed = remainingEmojis.filter(emoji => {
+                const name = emoji.replace(/:/g, '');
+                const cachedEmoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
+                if (!cachedEmoji) return true;
+                
+                const formattedVersion = cachedEmoji.animated 
+                    ? `<a:${cachedEmoji.name}:${cachedEmoji.id}>`
+                    : `<:${cachedEmoji.name}:${cachedEmoji.id}>`;
+                    
+                return !processed.includes(formattedVersion);
+            });
+            
+            if (actuallyUnprocessed.length > 0) {
+                logger.warn({
+                    unprocessedEmojis: actuallyUnprocessed,
+                    cacheSize: MODEL_CONFIG.emojiCache.size,
+                    text: processed
+                }, "Some emojis remained unprocessed");
+            }
+        }
+
         return processed;
 
     } catch (error) {
-        logger.error({ error }, "Error processing emoji text");
+        logger.error({ 
+            error,
+            text,
+            cacheSize: MODEL_CONFIG.emojiCache.size 
+        }, "Error processing emoji text");
         return text;
     }
+  }
+
+  /**
+   * Validates that an emoji is properly formatted for Discord
+   */
+  private validateEmojiFormat(emojiText: string): boolean {
+    // Check for proper Discord emoji format including animated
+    const emojiPattern = /<(a)?:[\w-]+:\d{17,20}>/;
+    const isValid = emojiPattern.test(emojiText);
+    
+    if (!isValid) {
+        logger.warn({
+            emojiText,
+            pattern: emojiPattern.source
+        }, "Invalid emoji format detected");
+    }
+    
+    return isValid;
   }
 }
 

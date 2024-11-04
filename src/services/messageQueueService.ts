@@ -164,8 +164,8 @@ export class MessageQueueService {
       // Wait for response to be ready
       const responseText = await responsePromise;
       
-      // Only process emojis once, with isFromBot=true
-      const processedResponse = emojiService.processEmojiText(responseText, true);
+      // Process emojis and wait for the result
+      const processedResponse = await emojiService.processEmojiText(responseText, true);
       
       if (queuedMessage.message.channel.type === ChannelType.GuildText) {
         // Final "typing" delay based on message length (0.5-1.5s)
