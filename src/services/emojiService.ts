@@ -19,6 +19,7 @@ export class EmojiService {
   private currentGuildId?: string;
   private currentGuildEmojis?: Collection<string, GuildEmoji>;
   private lastUsedEmoji: string | null = null;
+  private lastSaveLog: number = 0;
 
   constructor() {
     // Handle both local and Railway paths
@@ -139,21 +140,30 @@ export class EmojiService {
   private updateAvailableEmojis(): void {
     if (!this.currentGuildId || !this.currentGuildEmojis) return;
 
-    // Don't clear the cache, just update it
+    // Clear existing emojis for this guild first
+    Array.from(MODEL_CONFIG.emojiCache.entries()).forEach(([name, emoji]) => {
+      if (emoji.guildId === this.currentGuildId) {
+        MODEL_CONFIG.emojiCache.delete(name);
+      }
+    });
+
+    // Re-cache all current emojis
     this.currentGuildEmojis.forEach(emoji => {
       if (!emoji.name) return;
       
       const lowercaseName = emoji.name.toLowerCase();
-      if (!MODEL_CONFIG.emojiCache.has(lowercaseName)) {
-        MODEL_CONFIG.emojiCache.set(lowercaseName, {
-          id: emoji.id,
-          name: emoji.name,
-          animated: emoji.animated ?? false,
-          guildId: this.currentGuildId!
-        });
-      }
+      MODEL_CONFIG.emojiCache.set(lowercaseName, {
+        id: emoji.id,
+        name: emoji.name,
+        animated: emoji.animated ?? false,
+        guildId: this.currentGuildId!
+      });
     });
 
+    logger.debug({
+      guildId: this.currentGuildId,
+      cacheSize: MODEL_CONFIG.emojiCache.size
+    }, "Updated available emojis");
   }
 
   /**
@@ -181,19 +191,23 @@ export class EmojiService {
    */
   private async saveRankings(): Promise<void> {
     try {
-      const rankings = Object.fromEntries(this.emojiRankings);
-      await fs.writeFile(
-        this.rankingsPath, 
-        JSON.stringify(rankings, null, 2),
-        { encoding: "utf-8" }
-      );
-      
-      logger.debug({
-        rankingsCount: this.emojiRankings.size,
-        path: this.rankingsPath
-      }, "Saved emoji rankings");
+        const rankings = Object.fromEntries(this.emojiRankings);
+        await fs.writeFile(
+            this.rankingsPath, 
+            JSON.stringify(rankings, null, 2),
+            { encoding: "utf-8" }
+        );
+        
+        // Only log hourly
+        const now = Date.now();
+        if (!this.lastSaveLog || now - this.lastSaveLog > 3600000) {
+            logger.debug({
+                rankingsCount: this.emojiRankings.size,
+            }, "Saved emoji rankings");
+            this.lastSaveLog = now;
+        }
     } catch (error) {
-      logger.error({ error, path: this.rankingsPath }, "Error saving emoji rankings");
+        logger.error({ error }, "Error saving emoji rankings");
     }
   }
 
@@ -201,16 +215,8 @@ export class EmojiService {
    * Updates emoji usage count and refreshes available emojis if needed
    */
   public trackEmojiUsage(emojiName: string, isFromBot: boolean = false): void {
-    // Add debug logging
-    logger.debug({ 
-        emojiName, 
-        isFromBot, 
-        currentCount: this.emojiRankings.get(emojiName) ?? 0 
-    }, "Attempting to track emoji usage");
-
     // Skip tracking if message is from the bot
     if (isFromBot) {
-        logger.debug({ emojiName }, "Skipping emoji tracking for bot message");
         return;
     }
 
@@ -218,15 +224,14 @@ export class EmojiService {
     const newCount = currentCount + 1;
     this.emojiRankings.set(emojiName, newCount);
     
-    // Add debug logging for update
-    logger.debug({ 
-        emojiName, 
-        oldCount: currentCount,
-        newCount,
-        rankings: Object.fromEntries(this.emojiRankings)
-    }, "Updated emoji ranking");
+    // Only log significant ranking changes (e.g., milestones)
+    if (newCount % 10 === 0) { // Log every 10th use
+        logger.debug({ 
+            emojiName, 
+            uses: newCount
+        }, "Emoji usage milestone");
+    }
     
-    // Save rankings immediately after update
     void this.saveRankings();
     
     // Update available emojis if needed
@@ -265,13 +270,6 @@ export class EmojiService {
       
       const lowercaseName = emoji.name.toLowerCase();
       
-      logger.debug({
-        name: emoji.name,
-        id: emoji.id,
-        animated: emoji.animated,
-        guildId
-      }, "Caching emoji");
-
       MODEL_CONFIG.emojiCache.set(lowercaseName, {
         id: emoji.id,
         name: emoji.name,
@@ -284,13 +282,10 @@ export class EmojiService {
       }
     });
 
-    logger.info({
+    // Single log for the entire cache update
+    logger.debug({
       guildId,
-      emojiCount: MODEL_CONFIG.emojiCache.size,
-      emojis: Array.from(MODEL_CONFIG.emojiCache.entries()).map(([name, e]) => ({
-        name,
-        id: e.id
-      }))
+      emojiCount: MODEL_CONFIG.emojiCache.size
     }, "Updated emoji cache");
   }
 
@@ -329,21 +324,11 @@ export class EmojiService {
    * Validates an emoji name with strict rules
    */
   private isValidEmojiName(name: string): boolean {
-    // Discord emoji name rules:
-    // - 2-32 characters
-    // - Only alphanumeric, underscores, and hyphens
-    // - No double underscores (Discord restriction)
-    // - No consecutive hyphens
-    // - Cannot start/end with hyphen or underscore
-    const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9-_]*[a-zA-Z0-9]$/;
-    return (
-      name.length >= 2 && 
-      name.length <= 32 && 
-      validPattern.test(name) &&
-      !name.includes("__") && // No double underscores
-      !name.includes("--") && // No double hyphens
-      !/-.*_|_.*-/.test(name) // No mix of hyphen and underscore
-    );
+    // Simplified validation - just check for basic emoji name rules
+    const validPattern = /^[\w-]+$/;
+    return name.length >= 2 && 
+           name.length <= 32 && 
+           validPattern.test(name);
   }
 
   /**
@@ -362,134 +347,62 @@ export class EmojiService {
     };
   }
 
+  private async refreshGuildEmojis(): Promise<void> {
+    if (!this.currentGuildId) return;
+    
+    try {
+        const guild = await client.guilds.fetch(this.currentGuildId);
+        const emojis = await guild.emojis.fetch();
+        this.cacheGuildEmojis(this.currentGuildId, emojis);
+    } catch (error) {
+        logger.error({ error, guildId: this.currentGuildId }, "Failed to refresh guild emojis");
+    }
+  }
+
   /**
    * Processes text to properly format any emoji references and track usage
    */
   public processEmojiText(text: string, isFromBot: boolean = false): string {
     if (!text) return "";
     
+    // Add refresh at start of processing
+    void this.refreshGuildEmojis();
+    
     try {
-        // Create a unique prefix for this processing run to avoid collisions
-        const uniquePrefix = `__EMOJI_${Date.now()}_`;
-        const placeholders: Map<string, string> = new Map();
-        let placeholderCount = 0;
-
-        // Step 1: Preserve properly formatted Discord emojis
-        const preserveDiscordEmojis = (input: string): string => {
-            return input.replace(/<(?:a)?:[\w-]+:\d{17,20}>/g, (match) => {
-                const parsed = this.parseDiscordEmoji(match);
-                if (!parsed) return match;
-
-                // Validate the emoji components
-                if (!this.isValidEmojiName(parsed.name)) return match;
-                if (!/^\d{17,20}$/.test(parsed.id)) return match;
-
-                this.trackEmojiUsage(parsed.name.toLowerCase(), isFromBot);
-
-                const placeholder = `${uniquePrefix}${placeholderCount++}`;
-                placeholders.set(placeholder, match);
-                return placeholder;
-            });
-        };
-
-        // Step 2: Process unformatted emoji patterns
-        const processUnformattedEmojis = (input: string): string => {
-            // Handle :emoji: format
-            return input.replace(/:([\w-]+):/g, (fullMatch, emojiName) => {
-                // Add debug logging for each match
-                logger.debug({ 
-                    fullMatch, 
-                    emojiName,
-                    isFromBot,
-                    cacheContents: Array.from(MODEL_CONFIG.emojiCache.keys())
-                }, "Processing emoji match");
-
-                // Skip if it's already a placeholder
-                if (fullMatch.startsWith(uniquePrefix)) {
-                    logger.debug({ fullMatch }, "Skipping placeholder");
-                    return fullMatch;
-                }
-
-                // Basic validation
-                if (!this.isValidEmojiName(emojiName)) {
-                    logger.debug({ emojiName }, "Invalid emoji name");
-                    return fullMatch;
-                }
-
-                // Try case-insensitive match first
-                const lowercaseName = emojiName.toLowerCase();
-                let emoji = MODEL_CONFIG.emojiCache.get(lowercaseName);
-
-                // If not found, try exact match
-                if (!emoji) {
-                    emoji = MODEL_CONFIG.emojiCache.get(emojiName);
-                }
-
-                if (emoji) {
-                    // Add debug logging before tracking
-                    logger.debug({ 
-                        emojiName: emoji.name,
-                        isFromBot,
-                        currentRanking: this.emojiRankings.get(emoji.name.toLowerCase())
-                    }, "Found emoji in cache");
-
-                    this.trackEmojiUsage(emoji.name.toLowerCase(), isFromBot);
-                    
-                    // Use the correct format based on whether the emoji is animated
-                    const formattedEmoji = emoji.animated 
-                        ? `<a:${emoji.name}:${emoji.id}>`
-                        : `<:${emoji.name}:${emoji.id}>`;
-                    
-                    const placeholder = `${uniquePrefix}${placeholderCount++}`;
-                    placeholders.set(placeholder, formattedEmoji);
-                    return placeholder;
-                }
-
-                logger.debug({ 
-                    emojiName,
-                    lowercaseName,
-                    cacheKeys: Array.from(MODEL_CONFIG.emojiCache.keys())
-                }, "Emoji not found in cache");
-                return fullMatch;
-            });
-        };
-
-        // Step 3: Handle edge cases and cleanup
-        const cleanupText = (input: string): string => {
-            let cleaned = input;
+        // Step 1: Handle Discord formatted emojis first
+        let processed = text.replace(/<(a)?:(\w+):(\d{17,20})>/g, (match, animated, name, id) => {
+            if (!this.isValidEmojiName(name)) return match;
             
-            // Sort placeholders by length (longest first) to prevent partial replacements
-            const sortedPlaceholders = Array.from(placeholders.entries())
-                .sort(([a], [b]) => b.length - a.length);
-
-            // Replace all placeholders with their original emoji
-            for (const [placeholder, emoji] of sortedPlaceholders) {
-                const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                cleaned = cleaned.replace(new RegExp(escapedPlaceholder, 'g'), emoji);
+            const emoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
+            if (emoji) {
+                this.trackEmojiUsage(name.toLowerCase(), isFromBot);
+                return animated ? `<a:${name}:${id}>` : `<:${name}:${id}>`;
             }
+            return match;
+        });
 
-            // Remove any remaining placeholder patterns that weren't properly replaced
-            cleaned = cleaned.replace(new RegExp(`${uniquePrefix}\\d+`, 'g'), '');
+        // Step 2: Handle :emoji: format
+        processed = processed.replace(/:(\w+):/g, (match, name) => {
+            if (!this.isValidEmojiName(name)) return match;
+            
+            // Try case-insensitive lookup
+            const emoji = MODEL_CONFIG.emojiCache.get(name.toLowerCase());
+            if (emoji) {
+                this.trackEmojiUsage(name.toLowerCase(), isFromBot);
+                return emoji.animated 
+                    ? `<a:${emoji.name}:${emoji.id}>`
+                    : `<:${emoji.name}:${emoji.id}>`;
+            }
+            return match;
+        });
 
-            return cleaned;
-        };
-
-        // Add last used emoji tracking for bot messages
+        // Track last used emoji for bot messages
         if (isFromBot) {
-            const emojiMatches = text.match(/<(?:a)?:([\w-]+):\d{17,20}>/g);
-            if (emojiMatches && emojiMatches.length > 0) {
-                const lastEmoji = this.parseDiscordEmoji(emojiMatches[emojiMatches.length - 1]);
-                if (lastEmoji) {
-                    this.lastUsedEmoji = lastEmoji.name.toLowerCase();
-                }
+            const lastEmojiMatch = processed.match(/<(?:a)?:(\w+):\d{17,20}>/);
+            if (lastEmojiMatch) {
+                this.lastUsedEmoji = lastEmojiMatch[1].toLowerCase();
             }
         }
-
-        // Apply processing steps
-        let processed = text;
-        processed = preserveDiscordEmojis(processed);
-        processed = processUnformattedEmojis(processed);
-        processed = cleanupText(processed);
 
         return processed;
 
