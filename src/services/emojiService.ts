@@ -368,7 +368,7 @@ export class EmojiService {
 
     return {
       totalEmojis: this.emojiRankings.size,
-      topEmojis: Object.fromEntries(sortedRankings.slice(0, 10)),
+      topEmojis: Object.fromEntries(sortedRankings.slice(0, 15)),
       totalUsage: Array.from(this.emojiRankings.values()).reduce((a, b) => a + b, 0)
     };
   }
