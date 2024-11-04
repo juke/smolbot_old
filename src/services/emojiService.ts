@@ -331,6 +331,7 @@ export class EmojiService {
    * Gets a formatted list of top emojis by usage
    */
   public getAvailableEmojis(): string {
+    // Get all emojis except the last used one
     const emojiList = Array.from(MODEL_CONFIG.emojiCache.values())
         .filter(emoji => emoji.name.toLowerCase() !== this.lastUsedEmoji)
         .map(emoji => ({
@@ -339,6 +340,7 @@ export class EmojiService {
         }))
         .sort((a, b) => b.rank - a.rank)
         .slice(0, this.maxDisplayedEmojis)
+        // Use the exact emoji name from cache instead of any variations
         .map(({ name }) => `:${name}:`);
 
     return emojiList.join(", ") || "No custom emojis available";
@@ -467,10 +469,9 @@ export class EmojiService {
     try {
       await this.refreshGuildEmojis();
       
-      // First pass: Validate and ensure proper formatting of existing Discord emojis
+      // First pass: Handle pre-formatted Discord emojis
       const formattedEmojiPattern = /<(a)?:(\w+):(\d{17,20})>/g;
       
-      // Check if text contains pre-formatted emojis
       if (text.match(formattedEmojiPattern)) {
         const processed = text.replace(formattedEmojiPattern, (match, animated, name, id) => {
           // Verify emoji exists in cache
@@ -500,24 +501,21 @@ export class EmojiService {
         return processed;
       }
 
-      // Second pass: Process :emoji: format
-      return text.replace(/:(\w+):/g, (match, name) => {
-        if (!this.isValidEmojiName(name)) {
-          return match;
-        }
-
-        const emoji = this.getEmojiFromCache(name);
+      // Second pass: Process :emoji: format with improved matching
+      return text.replace(/:([a-zA-Z0-9_-]+):/g, (match, requestedName) => {
+        // Find the closest matching emoji name
+        const emoji = this.findBestMatchingEmoji(requestedName);
         
         if (!emoji) {
           logger.debug({ 
-            emojiName: name,
+            requestedName,
             cacheSize: MODEL_CONFIG.emojiCache.size,
             availableEmojis: Array.from(MODEL_CONFIG.emojiCache.keys())
           }, "Emoji not found in cache");
           return match;
         }
 
-        this.trackEmojiUsage(name.toLowerCase(), isFromBot);
+        this.trackEmojiUsage(emoji.name.toLowerCase(), isFromBot);
         
         const formatted = emoji.animated 
           ? `<a:${emoji.name}:${emoji.id}>`
@@ -538,6 +536,25 @@ export class EmojiService {
       }, "Error processing emoji text");
       return text;
     }
+  }
+
+  /**
+   * Finds the best matching emoji from cache
+   * Handles variations like 'smolgrow' matching 'smol_grow'
+   */
+  private findBestMatchingEmoji(requestedName: string): CachedEmoji | undefined {
+    // Try exact match first
+    const exactMatch = this.getEmojiFromCache(requestedName);
+    if (exactMatch) return exactMatch;
+
+    // Convert requested name to lowercase and remove underscores
+    const normalizedRequest = requestedName.toLowerCase().replace(/_/g, "");
+    
+    // Find emoji where normalized names match
+    return Array.from(MODEL_CONFIG.emojiCache.values()).find(emoji => {
+      const normalizedEmoji = emoji.name.toLowerCase().replace(/_/g, "");
+      return normalizedEmoji === normalizedRequest;
+    });
   }
 
   /**
