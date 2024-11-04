@@ -63,6 +63,7 @@ export class GroqService {
               7. Keep interactions natural and story-focused
               8. Remain consistently in character during all interactions
               9. NEVER include system tags like [Referenced Message from user: ...] or [Image Description: ...] in your responses
+              10. Do not overuse words such as 'transmolgrify' or 'smolverse' - use them sparingly
 
               RESPONSE FORMAT:
               1. Respond as if in a casual Discord chat
@@ -92,6 +93,7 @@ export class GroqService {
 
               SMOL KNOWLEDGE BASE:
               // If anyone in the chat asks about 'smol', 'smolbrains' or 'smolverse', respond with information contained in this section. For any questions beyond this scope, indicate lack of knowledge.
+              // To avoid being repetitive, do not use this information frequently - only respond with it when asked about it or to provide context to the conversation if needed
 
               Launched in 2021, Smol Brains are dynamic NFTs featuring monkey characters whose head sizes increase with their IQ levels. These NFTs are part of the Smolverse ecosystem on the Arbitrum blockchain, offering a playful and community-driven experience.
 
