@@ -462,15 +462,25 @@ export class EmojiService {
    * Gets an emoji from cache with case-insensitive matching
    */
   private getEmojiFromCache(name: string): CachedEmoji | undefined {
-    // Try exact match first for better performance
+    if (!name) return undefined;
+
+    // Try exact match first
     const exactMatch = MODEL_CONFIG.emojiCache.get(name);
     if (exactMatch) return exactMatch;
 
-    // Case-insensitive search through values
+    // Case-insensitive search
     const lowercaseName = name.toLowerCase();
-    return Array.from(MODEL_CONFIG.emojiCache.values()).find(
+    const caseInsensitiveMatch = Array.from(MODEL_CONFIG.emojiCache.values()).find(
       emoji => emoji.name.toLowerCase() === lowercaseName
     );
+
+    if (caseInsensitiveMatch) {
+      // Update cache with found emoji to speed up future lookups
+      MODEL_CONFIG.emojiCache.set(name, caseInsensitiveMatch);
+      return caseInsensitiveMatch;
+    }
+
+    return undefined;
   }
 
   /**
@@ -482,64 +492,35 @@ export class EmojiService {
     try {
       await this.refreshGuildEmojis();
       
-      // First pass: Handle pre-formatted Discord emojis
-      const formattedEmojiPattern = /<(a)?:(\w+):(\d{17,20})>/g;
-      
-      if (text.match(formattedEmojiPattern)) {
-        const processed = text.replace(formattedEmojiPattern, (match, animated, name, id) => {
-          // Verify emoji exists in cache
-          const emojiData = this.getEmojiFromCache(name);
-          
-          if (!emojiData) {
-            logger.debug({
-              name,
-              id,
-              match,
-              cacheSize: MODEL_CONFIG.emojiCache.size
-            }, "Pre-formatted emoji not found in cache");
-            return match;
-          }
-
-          // Track usage with lowercase name
-          this.trackEmojiUsage(name.toLowerCase(), isFromBot);
-          if (isFromBot) {
-            this.lastUsedEmoji = name.toLowerCase();
-          }
-
-          return emojiData.animated 
-            ? `<a:${emojiData.name}:${emojiData.id}>`
-            : `<:${emojiData.name}:${emojiData.id}>`;
-        });
-
-        return processed;
-      }
-
-      // Second pass: Process :emoji: format with improved matching
-      return text.replace(/:([a-zA-Z0-9_-]+):/g, (match, requestedName) => {
-        // Find the closest matching emoji name
-        const emoji = this.findBestMatchingEmoji(requestedName);
+      // Convert all emoji formats to consistent Discord format
+      const processEmoji = (name: string): string => {
+        const emoji = this.getEmojiFromCache(name);
+        if (!emoji) return `:${name}:`; // Keep original format if not found
         
-        if (!emoji) {
-          logger.debug({ 
-            requestedName,
-            cacheSize: MODEL_CONFIG.emojiCache.size,
-            availableEmojis: Array.from(MODEL_CONFIG.emojiCache.keys())
-          }, "Emoji not found in cache");
-          return match;
+        this.trackEmojiUsage(name.toLowerCase(), isFromBot);
+        if (isFromBot) {
+          this.lastUsedEmoji = name.toLowerCase();
         }
-
-        this.trackEmojiUsage(emoji.name.toLowerCase(), isFromBot);
         
-        const formatted = emoji.animated 
+        return emoji.animated 
           ? `<a:${emoji.name}:${emoji.id}>`
           : `<:${emoji.name}:${emoji.id}>`;
-        
-        if (isFromBot) {
-          this.lastUsedEmoji = emoji.name.toLowerCase();
+      };
+
+      // First pass: Handle both pre-formatted and :emoji: format
+      let processedText = text.replace(/(?:<(a)?:(\w+):(\d{17,20})>|:(\w+):)/g, (match, animated, name1, id, name2) => {
+        // If it's a pre-formatted emoji (with ID)
+        if (name1) {
+          return processEmoji(name1);
         }
-        
-        return formatted;
+        // If it's :emoji: format
+        if (name2) {
+          return processEmoji(name2);
+        }
+        return match;
       });
+
+      return processedText;
 
     } catch (error) {
       logger.error({ 
@@ -552,9 +533,34 @@ export class EmojiService {
   }
 
   /**
-   * Finds the best matching emoji from cache
+   * Verifies if an emoji still exists in its guild
+   */
+  private async verifyEmojiExists(emoji: CachedEmoji): Promise<boolean> {
+    try {
+      const guild = await client.guilds.fetch(emoji.guildId);
+      const guildEmoji = await guild.emojis.fetch(emoji.id);
+      return !!guildEmoji;
+    } catch (error) {
+      logger.warn({
+        emojiId: emoji.id,
+        emojiName: emoji.name,
+        guildId: emoji.guildId,
+        error
+      }, "Failed to verify emoji existence");
+      return false;
+    }
+  }
+
+  /**
+   * Finds the best matching emoji with improved validation
    */
   private findBestMatchingEmoji(requestedName: string): CachedEmoji | undefined {
+    // Validate input
+    if (!requestedName || typeof requestedName !== "string") {
+      logger.warn({ requestedName }, "Invalid emoji name requested");
+      return undefined;
+    }
+
     // Log the requested emoji name for debugging
     logger.debug({
       requestedName,
@@ -562,12 +568,13 @@ export class EmojiService {
       availableEmojis: Array.from(MODEL_CONFIG.emojiCache.values()).map(e => e.name)
     }, "Finding best matching emoji");
 
-    // Try exact match first
-    const exactMatch = this.getEmojiFromCache(requestedName);
+    // Try exact match first (case-sensitive)
+    const exactMatch = MODEL_CONFIG.emojiCache.get(requestedName);
     if (exactMatch) {
       logger.debug({ 
         requestedName,
-        matchedName: exactMatch.name 
+        matchedName: exactMatch.name,
+        matchType: "exact"
       }, "Found exact emoji match");
       return exactMatch;
     }
@@ -577,25 +584,28 @@ export class EmojiService {
     const caseInsensitiveMatch = Array.from(MODEL_CONFIG.emojiCache.values()).find(
       emoji => emoji.name.toLowerCase() === lowercaseRequest
     );
+    
     if (caseInsensitiveMatch) {
       logger.debug({ 
         requestedName,
-        matchedName: caseInsensitiveMatch.name 
+        matchedName: caseInsensitiveMatch.name,
+        matchType: "case-insensitive"
       }, "Found case-insensitive emoji match");
       return caseInsensitiveMatch;
     }
 
-    // Try normalized match (removing underscores)
-    const normalizedRequest = lowercaseRequest.replace(/_/g, "");
+    // Try normalized match (removing underscores and hyphens)
+    const normalizedRequest = lowercaseRequest.replace(/[_-]/g, "");
     const normalizedMatch = Array.from(MODEL_CONFIG.emojiCache.values()).find(emoji => {
-      const normalizedEmoji = emoji.name.toLowerCase().replace(/_/g, "");
+      const normalizedEmoji = emoji.name.toLowerCase().replace(/[_-]/g, "");
       return normalizedEmoji === normalizedRequest;
     });
 
     if (normalizedMatch) {
       logger.debug({ 
         requestedName,
-        matchedName: normalizedMatch.name 
+        matchedName: normalizedMatch.name,
+        matchType: "normalized"
       }, "Found normalized emoji match");
     } else {
       logger.debug({ 
