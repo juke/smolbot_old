@@ -40,8 +40,8 @@ export interface AIMessage {
  * Represents available text generation models in order of preference
  */
 export type TextModel = 
-  | "llama-3.2-90b-text-preview"
-  | "llama-3.2-11b-text-preview"
+  | "llama-3.1-70b-versatile"
+  | "llama-3.2-3b-preview"
   | "llama-3.1-8b-instant";
 
 /**

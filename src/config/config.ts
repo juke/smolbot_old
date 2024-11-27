@@ -24,8 +24,8 @@ export const CONFIG = {
   RATE_LIMITS: {
     resetInterval: 60 * 60 * 1000, // 1 hour in ms
     maxRequestsPerModel: {
-      "llama-3.2-90b-text-preview": 100000,
-      "llama-3.2-11b-text-preview": 200000,
+      "llama-3.1-70b-versatile": 100000,
+      "llama-3.2-3b-preview": 200000,
       "llama-3.1-8b-instant": 500000
     }
   }
@@ -33,8 +33,8 @@ export const CONFIG = {
 
 export const MODEL_CONFIG: ModelConfig = {
   textModels: [
-    "llama-3.2-90b-text-preview",
-    "llama-3.2-11b-text-preview",
+    "llama-3.1-70b-versatile",
+    "llama-3.2-3b-preview",
     "llama-3.1-8b-instant"
   ],
   visionModels: [
@@ -42,7 +42,7 @@ export const MODEL_CONFIG: ModelConfig = {
     "llama-3.2-90b-vision-preview",
     "llava-v1.5-7b-4096-preview"
   ],
-  currentTextModel: "llama-3.2-90b-text-preview",
+  currentTextModel: "llama-3.1-70b-versatile",
   currentVisionModel: "llama-3.2-11b-vision-preview",
   emojiCache: new Map()
 }; 

@@ -44,8 +44,8 @@ SmolBot is a sophisticated Discord bot designed to engage in natural conversatio
 ### AI Integration
 - Uses Groq API for text and vision processing
 - Multiple model fallback system:
-  - Primary: llama-3.2-90b-text-preview
-  - Fallback: llama-3.2-11b-text-preview
+  - Primary: llama-3.1-70b-versatile
+  - Fallback: llama-3.2-3b-preview
   - Emergency Fallback: llama-3.1-8b-instant
 - Intelligent retry mechanism with exponential backoff
 - Timeout handling for API calls
