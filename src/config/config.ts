@@ -42,7 +42,7 @@ export const MODEL_CONFIG: ModelConfig = {
     "llama-3.2-90b-vision-preview",
     "llava-v1.5-7b-4096-preview"
   ],
-  currentTextModel: "llama-3.1-70b-versatile",
+  currentTextModel: "llama-3.3-70b-versatile",
   currentVisionModel: "llama-3.2-11b-vision-preview",
   emojiCache: new Map()
 }; 
