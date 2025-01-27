@@ -24,7 +24,7 @@ export const CONFIG = {
   RATE_LIMITS: {
     resetInterval: 60 * 60 * 1000, // 1 hour in ms
     maxRequestsPerModel: {
-      "llama-3.1-70b-versatile": 100000,
+      "llama-3.3-70b-versatile": 100000,
       "llama-3.2-3b-preview": 200000,
       "llama-3.1-8b-instant": 500000
     }
@@ -33,7 +33,7 @@ export const CONFIG = {
 
 export const MODEL_CONFIG: ModelConfig = {
   textModels: [
-    "llama-3.1-70b-versatile",
+    "llama-3.3-70b-versatile",
     "llama-3.2-3b-preview",
     "llama-3.1-8b-instant"
   ],
